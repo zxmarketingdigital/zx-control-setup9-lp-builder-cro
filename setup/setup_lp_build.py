@@ -77,10 +77,14 @@ def _which(cmd: str) -> Optional[str]:
     return shutil.which(cmd)
 
 
-def _run(cmd: list, cwd: Path) -> int:
+def _run(cmd: list, cwd: Path, timeout: int = 300) -> int:
+    """Executa subprocess com timeout (default 5min). Sem isso, `bun install`
+    em rede flaky/offline pode pendurar indefinidamente."""
     print(f"$ {' '.join(cmd)}  (cwd={cwd})")
     try:
-        result = subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, cwd=cwd, check=True, capture_output=True, text=True, timeout=timeout,
+        )
         if result.stdout:
             print(result.stdout.strip()[-500:])
         return 0
@@ -89,6 +93,10 @@ def _run(cmd: list, cwd: Path) -> int:
         if e.stderr:
             print(e.stderr.strip()[-1000:])
         return e.returncode or 1
+    except subprocess.TimeoutExpired:
+        print(f"❌ Timeout ({timeout}s) em {' '.join(cmd)} — sem internet?")
+        print("    Tente: `bun install` manualmente naquela pasta com a rede OK.")
+        return 124
 
 
 def _migrate_legacy_components() -> None:
@@ -114,11 +122,19 @@ def _migrate_legacy_components() -> None:
 
 def _ensure_worker_deps() -> int:
     """Roda bun/npm install em cloudflare/worker/ — pra hono resolver antes
-    do setup_cloudflare.py fazer `wrangler deploy`."""
+    do setup_cloudflare.py fazer `wrangler deploy`.
+
+    Skip se node_modules/ já existe (assume install OK de run anterior).
+    Aluno pode forçar re-install deletando a pasta manualmente.
+    """
     if not WORKER_PKG.exists():
         print(f"⚠️  {WORKER_PKG} não existe — pulando install do worker.")
         return 0
     if not WORKER_DIR.exists():
+        return 0
+    worker_modules = WORKER_DIR / "node_modules"
+    if worker_modules.exists() and (worker_modules / "hono").exists():
+        print("♻️  Worker deps já instaladas (node_modules/hono existe) — skip.")
         return 0
     print("📦 Instalando deps do Worker (cloudflare/worker/)...")
     if _which("bun"):

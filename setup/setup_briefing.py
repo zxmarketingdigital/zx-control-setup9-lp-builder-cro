@@ -39,48 +39,55 @@ NICHOS = {
 
 
 # Features pré-fabricadas por nicho — formato {icon, title, desc} que o
-# template HTML (features.html) consome via x-for. Aluno edita depois
-# em lp-template/lp-config.json (campo copy.features) ou via setup_copy.py.
+# template HTML (features.html) consome via x-for.
+#
+# ⚠️  IMPORTANTE: títulos/desc abaixo são ESTRUTURAS exemplo. NÃO use claims
+# numéricos específicos (ex: "10 mil clientes", "SOC 2 compliant",
+# "Garantia incondicional") sem verificar com o cliente — alguns têm
+# implicação legal/regulatória (CDC, LGPD, publicidade enganosa).
+#
+# Aluno edita SEMPRE em lp-template/lp-config.json (copy.features) com os
+# números/claims REAIS do cliente antes de divulgar.
 NICHO_FEATURES = {
     "b2b-saas-clean": [
-        {"icon": "⚡", "title": "Implantação em 7 dias",
-         "desc": "Onboarding guiado por especialista, integrações prontas — sem projeto interno paralelo."},
-        {"icon": "📊", "title": "Dashboard de ROI em tempo real",
-         "desc": "Você vê o impacto financeiro de cada feature usada — não fica refém de relatório trimestral."},
-        {"icon": "🔒", "title": "SOC 2 + LGPD compliant",
-         "desc": "Compliance pronto pra TI exigente. Dados em região São Paulo, audit log incluso."},
+        {"icon": "⚡", "title": "Implantação rápida",
+         "desc": "Onboarding guiado por especialista, integrações prontas — sem projeto interno paralelo. (Ajuste o prazo conforme seu produto.)"},
+        {"icon": "📊", "title": "Visibilidade do ROI",
+         "desc": "Painel mostra o impacto financeiro de cada uso — não fica refém de relatório trimestral. (Personalize com suas métricas.)"},
+        {"icon": "🔒", "title": "Segurança e conformidade",
+         "desc": "Dados no Brasil, audit log incluso. (Cite só certificações que você realmente tem, ex: LGPD, SOC 2, ISO.)"},
     ],
     "infoproduto-bold": [
-        {"icon": "🚀", "title": "Método validado em 8 dígitos",
-         "desc": "Mais de 10 mil alunos passaram pelo mesmo passo a passo que você vai receber agora."},
-        {"icon": "🎯", "title": "Comunidade ativa diariamente",
-         "desc": "Grupo exclusivo no WhatsApp + lives quinzenais — você nunca trava sozinho."},
-        {"icon": "💎", "title": "Garantia incondicional de 7 dias",
-         "desc": "Testa sem risco. Se não for o que esperava, devolvemos 100% sem perguntas."},
+        {"icon": "🚀", "title": "Método estruturado",
+         "desc": "Passo a passo testado por alunos reais. (Quando tiver número/case, troque por específico, ex: 'mais de X alunos' com prova.)"},
+        {"icon": "🎯", "title": "Comunidade ativa",
+         "desc": "Grupo exclusivo + encontros ao vivo — você nunca trava sozinho. (Cite a frequência real dos encontros.)"},
+        {"icon": "💎", "title": "Garantia conforme CDC",
+         "desc": "7 dias de teste com devolução integral, conforme Código de Defesa do Consumidor. (Ajuste prazo/condições reais aqui.)"},
     ],
     "agencia-criativa": [
-        {"icon": "📈", "title": "Estratégia validada em 8 dígitos",
-         "desc": "Replicamos o método que já gerou mais de R$ 50 milhões em lançamentos para infoprodutores e agências."},
-        {"icon": "🎨", "title": "Copy + criativo + tráfego como peça única",
-         "desc": "Nada de equipes desconectadas. Tudo orquestrado por um time sênior que entende o seu funil de ponta a ponta."},
+        {"icon": "📈", "title": "Estratégia orientada por resultados",
+         "desc": "Método validado em projetos reais. (Quando tiver números agregados, cite com prova — case studies, depoimentos.)"},
+        {"icon": "🎨", "title": "Copy + criativo + tráfego integrados",
+         "desc": "Nada de equipes desconectadas. Tudo orquestrado por um time sênior que entende seu funil de ponta a ponta."},
         {"icon": "📊", "title": "Painel ao vivo com seus números",
-         "desc": "Acompanhe conversão, CPA, ROAS e LTV em tempo real — clareza total para decidir escala ou ajuste."},
+         "desc": "Acompanhe conversão, CPA, ROAS e LTV em tempo real — clareza pra decidir escala ou ajuste."},
     ],
     "ecommerce": [
-        {"icon": "🛒", "title": "Frete grátis a partir de R$ 199",
-         "desc": "Envio expresso pra todo Brasil, rastreamento na conta e troca sem custo em 30 dias."},
-        {"icon": "💳", "title": "Parcelamento em até 12x sem juros",
-         "desc": "Pix com 5% off ou cartão em 12x — você escolhe a forma que cabe no seu mês."},
-        {"icon": "⭐", "title": "+10 mil avaliações 5 estrelas",
-         "desc": "Produto testado por uma comunidade real — leia o que os clientes dizem antes de decidir."},
+        {"icon": "🛒", "title": "Entrega expressa pra todo Brasil",
+         "desc": "Rastreamento na conta e troca facilitada. (Ajuste prazo de entrega + condição de frete grátis conforme sua loja.)"},
+        {"icon": "💳", "title": "Pagamento flexível",
+         "desc": "Pix, cartão e parcelamento — você escolhe a forma que cabe. (Liste as condições reais — desconto Pix, parcelas etc.)"},
+        {"icon": "⭐", "title": "Avaliações de clientes reais",
+         "desc": "Produto testado por uma comunidade ativa — leia depoimentos antes de decidir. (Adicione número quando tiver volume verificado.)"},
     ],
     "servico-local": [
         {"icon": "📍", "title": "Atendimento na sua região",
          "desc": "Profissional local que conhece o bairro, com agenda flexível pra encaixar no seu dia."},
         {"icon": "✅", "title": "Orçamento sem compromisso",
-         "desc": "Avaliação grátis na primeira visita, com proposta clara em até 24h e sem letra miúda."},
-        {"icon": "🛡️", "title": "Garantia de serviço por 90 dias",
-         "desc": "Se algo der errado, voltamos sem custo. Sua confiança é o nosso ativo mais importante."},
+         "desc": "Avaliação na primeira visita, com proposta clara em até 24h e sem letra miúda. (Confirme se a avaliação é gratuita.)"},
+        {"icon": "🛡️", "title": "Garantia conforme contrato",
+         "desc": "Se algo der errado dentro do prazo combinado, voltamos sem custo adicional. (Defina prazo real — 30/60/90 dias.)"},
     ],
 }
 

@@ -179,17 +179,35 @@ def _update_allowed_origins(lp_config_id: str, pages_url: str) -> bool:
     return True
 
 
-def _cleanup_test_lead() -> None:
-    """Remove lead de teste do D1 via wrangler d1 (não HTTP — mais robusto)."""
+_LP_CONFIG_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+
+
+def _cleanup_test_lead(lp_config_id: str) -> None:
+    """Remove lead de teste do D1 via wrangler d1 (não HTTP — mais robusto).
+
+    Escopo: WHERE lp_config_id = ? AND email = ? AND name = ? — não apaga
+    leads reais homônimos de outras LPs (improvável mas).
+    """
+    if not _LP_CONFIG_ID_RE.match(lp_config_id):
+        print(f"⚠️  lp_config_id inválido ({lp_config_id!r}) — pulando cleanup.")
+        return
+    # Como _sql_str: aspa simples + escape. Email/name são literais conhecidos
+    # (constantes do setup), mas mantém o padrão.
+    def _q(s: str) -> str:
+        return "'" + s.replace("'", "''") + "'"
+    cmd = (
+        f"DELETE FROM leads WHERE lp_config_id = {_q(lp_config_id)} "
+        f"AND email = {_q(SMOKE_LEAD_EMAIL)} "
+        f"AND name = {_q(SMOKE_LEAD_NAME)}"
+    )
     result = subprocess.run(
-        ["wrangler", "d1", "execute", "lp-builder-db", "--remote",
-         "--command", f"DELETE FROM leads WHERE email = '{SMOKE_LEAD_EMAIL}'"],
+        ["wrangler", "d1", "execute", "lp-builder-db", "--remote", "--command", cmd],
         cwd=str(WORKER_DIR), capture_output=True, text=True, timeout=30,
     )
     if result.returncode == 0:
         print("✅ Lead de teste limpo do D1.")
     else:
-        print(f"⚠️  Lead de teste deixado no CRM. Pode deletar manualmente pelo botão 🗑")
+        print("⚠️  Lead de teste deixado no CRM (pode deletar pelo botão 🗑 — nome '[SETUP-TEST]').")
         print(f"   (DELETE falhou: {(result.stderr or '')[-150:]})")
 
 
@@ -261,8 +279,8 @@ def _smoke_pages(pages_url: str, worker_url: str, lp_config_id: str) -> bool:
     print(f"   {'✅' if ok4 else '❌'} POST /chat-ia → HTTP {code} (SSE stream){provider}")
     all_ok = all_ok and ok4
 
-    # 5. Cleanup
-    _cleanup_test_lead()
+    # 5. Cleanup (scoped by lp_config_id pra não tocar leads de outra LP)
+    _cleanup_test_lead(lp_config_id)
     return all_ok
 
 
@@ -337,13 +355,25 @@ def main() -> int:
 
     time.sleep(2)
     smoke_ok = _smoke_pages(pages_url, worker_url, lp_config_id)
+
+    # Sempre grava a URL (deploy aconteceu), mas só marca DEPLOY_DONE=true
+    # se smoke passou — evita aluno achar que tá pronto pra divulgar quando
+    # /chat-ia ou /capture-lead estão quebrados.
+    env_updates: dict = {"LP_DEPLOYED_URL": pages_url}
+    env_updates["DEPLOY_DONE"] = "true" if smoke_ok else "false"
+    save_env(env_updates)
+
     if not smoke_ok:
         print()
-        print("⚠️  Smoke E2E teve falhas. Revise os erros acima antes de divulgar a LP.")
-        print("    Possíveis causas: GROQ_API_KEY não configurada, daily_limit estourado,")
-        print("    DNS Pages ainda propagando (espera 30s e reabre LP no browser).")
+        print("❌ Smoke E2E teve falhas — DEPLOY_DONE=false no setup9.env.")
+        print("   NÃO divulgue a LP enquanto não destravar os testes acima.")
+        print("   Possíveis causas:")
+        print("   • GROQ_API_KEY não configurada → rode setup_chat_ia.py")
+        print("   • daily_limit (800/dia) estourado → espera 00h UTC ou aumenta no D1")
+        print("   • DNS Pages ainda propagando → espera 30s e rode setup_deploy.py de novo")
+        print("   • allowed_origins desatualizado → setup_deploy.py auto-atualiza no próximo run")
+        return 1
 
-    save_env({"LP_DEPLOYED_URL": pages_url, "DEPLOY_DONE": "true"})
     banner_final(pages_url, worker_url)
     return 0
 

@@ -154,7 +154,12 @@ def coletar_groq() -> str:
         print("❌ Key rejeitada (HTTP 401). Confere se copiou inteira.")
         return ""
     if status == "rate_limited":
-        print("⚠️  Key aceita mas rate-limited agora (429). Vou gravar mesmo assim.")
+        print("⚠️  Key aceita mas rate-limited AGORA (429). Pode ser quota por minuto (30 RPM).")
+        print("    Se persistir, sua conta atingiu o cap diário — chat IA vai cair em canned.")
+        conf = input("    Gravar mesmo assim? [s/N]: ").strip().lower()
+        if conf != "s":
+            print("ℹ️  Tente de novo em 1 min ou volte com outra key.")
+            return ""
         return key
     print("⚠️  Não consegui validar (timeout/rede). Vou gravar mesmo assim — testa depois com /chat-ia.")
     return key

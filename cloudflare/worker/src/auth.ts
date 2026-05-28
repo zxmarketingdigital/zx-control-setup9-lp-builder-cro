@@ -155,8 +155,37 @@ export async function authenticateAdmin(
   return ctx;
 }
 
+/**
+ * Match de origin contra allowlist. Aceita:
+ *   - `*`                     → match qualquer (use só pra dev local)
+ *   - `https://exact.com`     → match exato (case-sensitive)
+ *   - `https://*.pages.dev`   → suffix match (qualquer subdomain de pages.dev)
+ *
+ * Suffix wildcard só permitido na parte do HOST (depois do schema), e o
+ * pattern deve começar com `*.` — `*example.com` ou `https://*.foo.com.evil.org`
+ * NÃO bate. O check valida que origin termina com `.` + dominio base + porta opcional.
+ */
+function originMatches(origin: string, allowed: string[]): boolean {
+  if (allowed.includes("*")) return true;
+  if (allowed.includes(origin)) return true;
+  for (const entry of allowed) {
+    // Wildcard só na forma "https://*.dominio.tld" (sem path, sem porta no pattern).
+    const m = entry.match(/^(https?:\/\/)\*\.([A-Za-z0-9.\-]+)$/);
+    if (!m) continue;
+    const scheme = m[1];          // "https://" ou "http://"
+    const baseHost = m[2];        // "pages.dev"
+    // Origin tem que começar com mesmo schema e terminar com ".baseHost"
+    if (!origin.startsWith(scheme)) continue;
+    const originHost = origin.slice(scheme.length); // "abc.pages.dev" ou "abc.pages.dev:443"
+    const hostNoPort = originHost.split(":")[0];
+    if (hostNoPort === baseHost) continue;  // pattern exige subdomain real, não bare
+    if (hostNoPort.endsWith("." + baseHost)) return true;
+  }
+  return false;
+}
+
 export function corsHeaders(origin: string | null, allowed: string[]): HeadersInit {
-  const isAllowed = origin && (allowed.includes("*") || allowed.includes(origin));
+  const isAllowed = origin && originMatches(origin, allowed);
   return {
     "access-control-allow-origin": isAllowed ? (origin as string) : "null",
     "access-control-allow-headers": "content-type, x-lp-token, x-lp-id",
@@ -168,5 +197,5 @@ export function corsHeaders(origin: string | null, allowed: string[]): HeadersIn
 
 export function originDenied(origin: string | null, allowed: string[]): boolean {
   if (!origin) return true;  // Origin é obrigatório agora — bloqueia bypass server-to-server.
-  return !(allowed.includes("*") || allowed.includes(origin));
+  return !originMatches(origin, allowed);
 }
