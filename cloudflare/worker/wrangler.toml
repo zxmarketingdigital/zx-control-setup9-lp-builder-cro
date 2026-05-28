@@ -15,9 +15,10 @@ ENVIRONMENT = "production"
 DEFAULT_DAILY_LIMIT = "800"
 
 # Secrets — definir via `wrangler secret put`:
-#   wrangler secret put LP_TOKEN          (token compartilhado por LP)
-#   wrangler secret put GEMINI_API_KEY    (chat IA default)
-#   wrangler secret put ANTHROPIC_API_KEY (chat IA fallback — opcional)
+#   wrangler secret put LP_TOKEN          (admin do CRM, gerado por LP)
+#   wrangler secret put GROQ_API_KEY      (chat IA default — Llama 3.3 70B grátis)
+#   wrangler secret put GEMINI_API_KEY    (chat IA fallback opcional)
+#   wrangler secret put ANTHROPIC_API_KEY (chat IA fallback opcional, $5 trial)
 
 [observability]
 enabled = true
