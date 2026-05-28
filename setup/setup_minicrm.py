@@ -58,11 +58,72 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _migrate_features(features) -> list:
+    """Migra features formato antigo (string[]) pro novo ({icon,title,desc}[]).
+
+    Aluno que rodou setup antes pode ter features como array de strings.
+    Template HTML novo (features.html) espera objetos. Esta função:
+    - se já é objeto, mantém intacto
+    - se é string, split em ':' (título antes, desc depois) ou usa string toda
+      como desc com ícone padrão ✨
+    """
+    if not isinstance(features, list):
+        return features
+    out = []
+    for item in features:
+        if isinstance(item, dict):
+            out.append(item)
+        elif isinstance(item, str):
+            text = item.strip()
+            if ":" in text:
+                title, _, desc = text.partition(":")
+                out.append({"icon": "✨", "title": title.strip(), "desc": desc.strip()})
+            else:
+                # Pega 1ª frase como título, resto como desc.
+                first_period = text.find(".")
+                if 0 < first_period < 60:
+                    title = text[:first_period].strip()
+                    desc = text[first_period + 1:].strip() or title
+                else:
+                    title = text[:60].strip()
+                    desc = text
+                out.append({"icon": "✨", "title": title, "desc": desc})
+        # Outros tipos: descarta (defensive)
+    return out
+
+
 def _write_public_json(cfg: dict) -> None:
-    public_cfg = {k: cfg[k] for k in PUBLIC_KEYS if k in cfg}
+    """Merge inteligente: preserva campos existentes em lp-public.json que
+    NÃO vêm de lp-config.json (ex: ajustes manuais do aluno em campos extras),
+    e atualiza só os campos canônicos. Backup salvo em .bak.
+    """
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1. Ler existente (se houver) e fazer backup.
+    existing = _read_json(PUBLIC_JSON) if PUBLIC_JSON.exists() else {}
+    if existing:
+        backup = PUBLIC_JSON.with_suffix(".json.bak")
+        backup.write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    # 2. Extrair campos canônicos de cfg, migrando features se necessário.
+    canonical = {k: cfg[k] for k in PUBLIC_KEYS if k in cfg}
+    if isinstance(canonical.get("copy"), dict):
+        copy_block = dict(canonical["copy"])
+        if "features" in copy_block:
+            copy_block["features"] = _migrate_features(copy_block["features"])
+        canonical["copy"] = copy_block
+
+    # 3. Merge: existing + canonical override (canonical wins pra campos sobrepostos).
+    merged = {**existing, **canonical}
+
+    # 4. Garantia: nunca deixar lp_token vazar.
+    merged.pop("lp_token", None)
+
     PUBLIC_JSON.write_text(
-        json.dumps(public_cfg, indent=2, ensure_ascii=False),
+        json.dumps(merged, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
 

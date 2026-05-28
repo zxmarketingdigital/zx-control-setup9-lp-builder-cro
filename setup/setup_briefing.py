@@ -38,6 +38,53 @@ NICHOS = {
 }
 
 
+# Features pré-fabricadas por nicho — formato {icon, title, desc} que o
+# template HTML (features.html) consome via x-for. Aluno edita depois
+# em lp-template/lp-config.json (campo copy.features) ou via setup_copy.py.
+NICHO_FEATURES = {
+    "b2b-saas-clean": [
+        {"icon": "⚡", "title": "Implantação em 7 dias",
+         "desc": "Onboarding guiado por especialista, integrações prontas — sem projeto interno paralelo."},
+        {"icon": "📊", "title": "Dashboard de ROI em tempo real",
+         "desc": "Você vê o impacto financeiro de cada feature usada — não fica refém de relatório trimestral."},
+        {"icon": "🔒", "title": "SOC 2 + LGPD compliant",
+         "desc": "Compliance pronto pra TI exigente. Dados em região São Paulo, audit log incluso."},
+    ],
+    "infoproduto-bold": [
+        {"icon": "🚀", "title": "Método validado em 8 dígitos",
+         "desc": "Mais de 10 mil alunos passaram pelo mesmo passo a passo que você vai receber agora."},
+        {"icon": "🎯", "title": "Comunidade ativa diariamente",
+         "desc": "Grupo exclusivo no WhatsApp + lives quinzenais — você nunca trava sozinho."},
+        {"icon": "💎", "title": "Garantia incondicional de 7 dias",
+         "desc": "Testa sem risco. Se não for o que esperava, devolvemos 100% sem perguntas."},
+    ],
+    "agencia-criativa": [
+        {"icon": "📈", "title": "Estratégia validada em 8 dígitos",
+         "desc": "Replicamos o método que já gerou mais de R$ 50 milhões em lançamentos para infoprodutores e agências."},
+        {"icon": "🎨", "title": "Copy + criativo + tráfego como peça única",
+         "desc": "Nada de equipes desconectadas. Tudo orquestrado por um time sênior que entende o seu funil de ponta a ponta."},
+        {"icon": "📊", "title": "Painel ao vivo com seus números",
+         "desc": "Acompanhe conversão, CPA, ROAS e LTV em tempo real — clareza total para decidir escala ou ajuste."},
+    ],
+    "ecommerce": [
+        {"icon": "🛒", "title": "Frete grátis a partir de R$ 199",
+         "desc": "Envio expresso pra todo Brasil, rastreamento na conta e troca sem custo em 30 dias."},
+        {"icon": "💳", "title": "Parcelamento em até 12x sem juros",
+         "desc": "Pix com 5% off ou cartão em 12x — você escolhe a forma que cabe no seu mês."},
+        {"icon": "⭐", "title": "+10 mil avaliações 5 estrelas",
+         "desc": "Produto testado por uma comunidade real — leia o que os clientes dizem antes de decidir."},
+    ],
+    "servico-local": [
+        {"icon": "📍", "title": "Atendimento na sua região",
+         "desc": "Profissional local que conhece o bairro, com agenda flexível pra encaixar no seu dia."},
+        {"icon": "✅", "title": "Orçamento sem compromisso",
+         "desc": "Avaliação grátis na primeira visita, com proposta clara em até 24h e sem letra miúda."},
+        {"icon": "🛡️", "title": "Garantia de serviço por 90 dias",
+         "desc": "Se algo der errado, voltamos sem custo. Sua confiança é o nosso ativo mais importante."},
+    ],
+}
+
+
 PERGUNTAS_PROFUNDO = [
     ("segmento", "Qual é o segmento/nicho do cliente? (ex: clínica odontológica, SaaS de RH)"),
     ("oferta", "Qual é a oferta principal? (produto, serviço, ticket médio)"),
@@ -113,12 +160,27 @@ def modo_rapido() -> int:
     LP_DIR.mkdir(parents=True, exist_ok=True)
     header = f"# Briefing — {nome_cliente}\n\n> Nicho: {nome_legivel}\n> CTA principal: {cta}\n\n"
     BRIEFING_MD.write_text(header + conteudo, encoding="utf-8")
-    _atualizar_config({
+
+    # Features estruturadas por nicho — template HTML (features.html) espera
+    # array de {icon, title, desc}. Aluno edita depois via setup_copy.py ou
+    # direto em lp-template/lp-config.json.
+    features = NICHO_FEATURES.get(slug, [])
+    cfg_updates = {
         "name": nome_cliente,
         "cta_principal": cta,
         "nicho": slug,
-    })
+    }
+    if features:
+        cfg = _read_json(CONFIG_JSON)
+        copy_block = cfg.get("copy") or {}
+        # Não sobrescreve copy se aluno já preencheu via setup_copy.py
+        if not copy_block.get("features"):
+            copy_block["features"] = features
+            cfg_updates["copy"] = copy_block
+    _atualizar_config(cfg_updates)
     print(f"✅ Briefing salvo em {BRIEFING_MD}")
+    if features and "copy" in cfg_updates:
+        print(f"✅ {len(features)} features pré-fabricadas gravadas em lp-config.json")
     return 0
 
 
