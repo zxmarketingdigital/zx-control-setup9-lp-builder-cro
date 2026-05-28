@@ -271,13 +271,16 @@ CRM ficará acessível em `<URL-LP>/crm.html` após o deploy (etapa 8). Próxima
 `[] Etapa 7 de 8`
 
 ### O que é
-Configura provider (Gemini grátis ou Claude SDK) + streaming SSE
+Configura provider de IA pro chat (Groq recomendado, Gemini ou Claude) + streaming SSE.
 
 ### Para que serve
-Visitante da LP tira dúvidas sem esperar humano
+Visitante da LP tira dúvidas sem esperar humano. Resposta baseada no briefing do cliente (server-side, anti prompt injection).
 
 ### Como você vai usar no dia-a-dia
-Aluno cola key, script salva secret no Worker
+Aluno cola key uma vez, script valida via `GET /models` e salva como secret no Worker.
+
+### Provider recomendado: Groq
+Llama 3.3 70B da Meta, free tier generoso (centenas de chats/dia), sem cartão. Pega key em https://console.groq.com/keys (login com Google em 30s).
 
 ### Pronto para instalar?
 > Execute diretamente — sem pedir confirmação extra.
@@ -287,10 +290,10 @@ Aluno cola key, script salva secret no Worker
 Execute: `python3 setup/setup_chat_ia.py`
 
 O script vai:
-- Pedir provider (Gemini grátis / Claude pago / ambos)
-- Para Claude: exigir confirmação de spend limit antes de aceitar key
-- Gravar secret no Worker (`wrangler secret put GEMINI_API_KEY|ANTHROPIC_API_KEY`)
-- Smoke `POST /chat-ia` com `X-LP-Token`
+- Mostrar 4 opções: Groq (1, recomendado) / Gemini (2) / Claude (3) / Pular (4)
+- Pra Groq: validar a key via `GET /models` (não consome quota)
+- Pra Claude: exigir confirmação de spend limit antes de aceitar key
+- Gravar secret no Worker (`wrangler secret put GROQ_API_KEY` etc)
 - Salvar `CHAT_PROVIDER` e `CHAT_IA_DONE=true` em `setup9.env`
 
 ### Após o script
@@ -322,8 +325,13 @@ Execute: `python3 setup/setup_deploy.py`
 O script vai:
 - Oferecer injetar token Cloudflare Web Analytics em `dist/index.html`
 - Criar Pages project + `wrangler pages deploy ./dist`
-- Capturar URL `*.pages.dev`
-- Smoke E2E: `GET /` 200 + `OPTIONS /capture-lead` (CORS)
+- Capturar URL `*.pages.dev` (canonical) e adicionar automaticamente em `allowed_origins` do D1 (resolve CORS sem rerun)
+- Smoke E2E completo:
+  1. `GET /` da LP → 200
+  2. `OPTIONS /capture-lead` → 204 (CORS preflight)
+  3. `POST /capture-lead` real (payload identificável `[SETUP-TEST]`) → 200
+  4. `POST /chat-ia` com "ping" → 200 + SSE stream
+  5. `DELETE` do lead de teste via `wrangler d1 execute` (cleanup)
 - Salvar `LP_DEPLOYED_URL` e `DEPLOY_DONE=true` em `setup9.env`
 - Banner final com URLs
 

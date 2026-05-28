@@ -144,7 +144,7 @@
 
     <div class="chat-panel__messages" x-ref="chatMessages">
       <template x-for="(m, i) in chatMessages" :key="i">
-        <div :class="'chat-msg chat-msg--' + m.role" x-text="m.content"></div>
+        <div :class="'chat-msg chat-msg--' + (m.role === 'assistant' ? 'bot' : m.role)" x-text="m.content"></div>
       </template>
       <div x-show="chatStreaming" class="chat-msg chat-msg--bot" style="opacity: 0.6;">
         digitando…
@@ -237,7 +237,10 @@
           });
           // Endpoint público — NÃO mandar X-LP-Token (admin only).
           // Segurança: Origin allowlist + rate limit no Worker.
-          fetch(window.LP_CONFIG.worker_url.replace(/\/$/, '') + '/capture-lead', {
+          // lp_id também no querystring (preflight CORS não inclui X-LP-Id header).
+          var captureUrl = window.LP_CONFIG.worker_url.replace(/\/$/, '') +
+            '/capture-lead?lp_id=' + encodeURIComponent(window.LP_CONFIG.id);
+          fetch(captureUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -275,6 +278,7 @@
         chatInput: '',
         chatMessages: [],
         chatStreaming: false,
+        chatSessionId: '',
         init: function () {
           // Aguarda config se ainda não chegou
           if (!window.LP_CONFIG) {
@@ -286,9 +290,22 @@
         initChat: function () {
           if (this.chatMessages.length === 0) {
             this.chatMessages.push({
-              role: 'bot',
+              role: 'assistant',
               content: 'Oi! Sou o atendimento IA. Qual sua dúvida?',
             });
+          }
+          if (!this.chatSessionId) {
+            try {
+              var sid = sessionStorage.getItem('lp_chat_session');
+              if (!sid) {
+                sid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+                  : (Date.now().toString(16) + '-xxxxxxxxxxxxxxxx'.replace(/x/g, function () {
+                    return Math.floor(Math.random() * 16).toString(16);
+                  }));
+                sessionStorage.setItem('lp_chat_session', sid);
+              }
+              this.chatSessionId = sid;
+            } catch (_) { /* sessionStorage indisponível */ }
           }
         },
         sendChat: function () {
@@ -300,11 +317,17 @@
           self.chatStreaming = true;
           self.scrollChat();
 
-          var url = window.LP_CONFIG.worker_url.replace(/\/$/, '') + '/chat-ia';
+          var url = window.LP_CONFIG.worker_url.replace(/\/$/, '') +
+            '/chat-ia?lp_id=' + encodeURIComponent(window.LP_CONFIG.id);
           // Streaming via fetch + ReadableStream (SSE chunks "data: {...}\n\n").
-          // Fallback: se chunks vierem como JSON puro, agrega no final.
-          var botMsg = { role: 'bot', content: '' };
-          self.chatMessages.push(botMsg);
+          // Snapshot do histórico ATÉ a msg do user atual (sem o bot placeholder).
+          var historyPayload = self.chatMessages.map(function (m) {
+            return { role: m.role, content: m.content };
+          });
+          // Push placeholder do bot e pega a REFERÊNCIA reativa pelo índice
+          // (Alpine 3 wrap o objeto em Proxy ao push; mutar o raw não dispara re-render).
+          self.chatMessages.push({ role: 'assistant', content: '' });
+          var botIdx = self.chatMessages.length - 1;
 
           // Endpoint público — sem X-LP-Token (segurança vem do Origin allowlist + rate limit).
           fetch(url, {
@@ -314,13 +337,16 @@
               'Accept': 'text/event-stream',
               'X-LP-Id': window.LP_CONFIG.id,
             },
-            body: JSON.stringify({ message: msg, history: self.chatMessages.slice(-8) }),
+            body: JSON.stringify({
+              messages: historyPayload.slice(-20),
+              session_id: self.chatSessionId || undefined,
+            }),
           })
             .then(function (r) {
               if (!r.ok) throw new Error('HTTP ' + r.status);
               if (!r.body || !r.body.getReader) {
                 return r.text().then(function (txt) {
-                  botMsg.content = txt;
+                  self.chatMessages[botIdx].content = txt;
                 });
               }
               var reader = r.body.getReader();
@@ -341,9 +367,9 @@
                     try {
                       var obj = JSON.parse(data);
                       var delta = obj.delta || obj.content || obj.text || '';
-                      botMsg.content += delta;
+                      self.chatMessages[botIdx].content += delta;
                     } catch (_) {
-                      botMsg.content += data;
+                      self.chatMessages[botIdx].content += data;
                     }
                     self.scrollChat();
                   });
@@ -354,7 +380,7 @@
             })
             .catch(function (err) {
               console.error('[lp] chat falhou:', err);
-              botMsg.content = botMsg.content ||
+              self.chatMessages[botIdx].content = self.chatMessages[botIdx].content ||
                 'Não consegui responder agora. Fale com a gente em ' +
                 (window.LP_CONFIG.fallback_contact_url || 'nosso contato') + '.';
             })

@@ -277,7 +277,8 @@
           var self = this;
           lead.status = newStatus;
           var url = window.LP_CONFIG.worker_url.replace(/\/$/, '') +
-            '/leads/' + encodeURIComponent(lead.id);
+            '/leads/' + encodeURIComponent(lead.id) +
+            '?lp_id=' + encodeURIComponent(window.LP_CONFIG.id);
           fetch(url, {
             method: 'PATCH',
             headers: {
@@ -307,17 +308,21 @@
           var rows = this.filtered;
           if (rows.length === 0) return;
           var cols = ['id', 'name', 'email', 'whatsapp', 'status', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'page_url', 'referrer', 'created_at'];
-          var header = cols.join(',');
+          // CSV injection guard: prefixar células iniciando em =+-@\t\r com apóstrofo (Excel/Sheets DDE).
+          function safeCell(v) {
+            if (v == null) return '';
+            var s = String(v);
+            if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+            if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+              s = '"' + s.replace(/"/g, '""') + '"';
+            }
+            return s;
+          }
+          var header = cols.map(safeCell).join(',');
           var body = rows.map(function (r) {
-            return cols.map(function (c) {
-              var v = r[c] == null ? '' : String(r[c]);
-              if (v.includes(',') || v.includes('"') || v.includes('\n')) {
-                v = '"' + v.replace(/"/g, '""') + '"';
-              }
-              return v;
-            }).join(',');
+            return cols.map(function (c) { return safeCell(r[c]); }).join(',');
           }).join('\n');
-          var csv = header + '\n' + body;
+          var csv = '﻿' + header + '\n' + body; // BOM UTF-8 pra Excel BR
           var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');

@@ -1,13 +1,17 @@
 -- Setup 9 — Schema D1 (SQLite serverless)
 -- Aplicar via: wrangler d1 execute lp-builder-db --file=schema.sql
+-- Migrations: schema-002.sql (briefing/token_hash/page_url/referrer)
 
 CREATE TABLE IF NOT EXISTS lp_configs (
-  id           TEXT PRIMARY KEY,
-  owner_id     TEXT NOT NULL,
-  name         TEXT NOT NULL,
-  allowed_origins TEXT NOT NULL DEFAULT '[]',  -- JSON array de origins permitidos
-  daily_limit  INTEGER NOT NULL DEFAULT 800,
-  created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id                   TEXT PRIMARY KEY,
+  owner_id             TEXT NOT NULL,
+  name                 TEXT NOT NULL,
+  allowed_origins      TEXT NOT NULL DEFAULT '[]',  -- JSON array de origins permitidos
+  daily_limit          INTEGER NOT NULL DEFAULT 800,
+  briefing             TEXT NOT NULL DEFAULT '',    -- system prompt do chat IA (server-side)
+  fallback_contact_url TEXT,                        -- wa.me/... pra canned response
+  token_hash           TEXT,                        -- sha-256 hex do lp_token (auth admin)
+  created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_lp_configs_owner ON lp_configs(owner_id);
 
@@ -24,12 +28,15 @@ CREATE TABLE IF NOT EXISTS leads (
   utm_campaign TEXT,
   utm_content  TEXT,
   utm_term     TEXT,
+  page_url     TEXT,
+  referrer     TEXT,
   created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (lp_config_id) REFERENCES lp_configs(id)
 );
 CREATE INDEX IF NOT EXISTS idx_leads_lp ON leads(lp_config_id);
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
+CREATE INDEX IF NOT EXISTS idx_leads_lp_created ON leads(lp_config_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_leads_utm_source ON leads(utm_source);
 
 CREATE TABLE IF NOT EXISTS chat_messages (

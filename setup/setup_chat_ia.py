@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Setup 9 — Etapa 7: Chat IA (Gemini grátis ou Claude SDK).
+"""Setup 9 — Etapa 7: Chat IA (Groq, Gemini ou Claude).
 
-Gemini: passo-a-passo pra criar key no AI Studio.
-Claude: exige confirmação de spend limit antes de aceitar key.
+Groq (recomendado): Llama 3.3 70B grátis, sem cartão.
+Gemini: fallback, free tier compartilhado por conta Google.
+Claude: SDK pago — exige confirmação de spend limit.
+
 Modo full → wrangler secret put. Modo local-only → salva no env.
-Smoke: POST /chat-ia com mensagem teste.
+Validação: GET /models (não consome quota).
 """
 from __future__ import annotations
 
@@ -106,6 +108,58 @@ def _smoke_chat(worker_url: str, lp_token: str) -> None:
         print("⚠️  Timeout no smoke do chat (15s).")
 
 
+def _validate_groq_key(key: str) -> str:
+    """GET /models — não consome quota. Retorna 'ok' / 'rate_limited' / 'invalid' / 'network'."""
+    try:
+        result = subprocess.run(
+            ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "10",
+             "-H", f"Authorization: Bearer {key}",
+             "https://api.groq.com/openai/v1/models"],
+            capture_output=True, text=True, timeout=12,
+        )
+        code = (result.stdout or "").strip()
+    except subprocess.TimeoutExpired:
+        return "network"
+    except FileNotFoundError:
+        return "network"
+    if code == "200":
+        return "ok"
+    if code == "401":
+        return "invalid"
+    if code == "429":
+        return "rate_limited"
+    return "network"
+
+
+def coletar_groq() -> str:
+    print()
+    print("⚡ Provider: Groq (Llama 3.3 70B — RECOMENDADO)")
+    print("   Por que Groq: IA gratuita da Meta rodando em hardware ultra-rápido,")
+    print("   sem cartão de crédito. Free tier de centenas de chats/dia,")
+    print("   muito mais que o Gemini.")
+    print()
+    print("   Passo-a-passo (30s):")
+    print("   1. Abra: https://console.groq.com/keys")
+    print("   2. Faça login com Google")
+    print("   3. Clique em 'Create API Key' → cole abaixo")
+    print()
+    key = _input_secret("Cole a GROQ_API_KEY (formato gsk_...): ")
+    if not key:
+        return ""
+    status = _validate_groq_key(key)
+    if status == "ok":
+        print("✅ Key Groq validada (HTTP 200 em /models).")
+        return key
+    if status == "invalid":
+        print("❌ Key rejeitada (HTTP 401). Confere se copiou inteira.")
+        return ""
+    if status == "rate_limited":
+        print("⚠️  Key aceita mas rate-limited agora (429). Vou gravar mesmo assim.")
+        return key
+    print("⚠️  Não consegui validar (timeout/rede). Vou gravar mesmo assim — testa depois com /chat-ia.")
+    return key
+
+
 def coletar_gemini() -> str:
     print()
     print("🧠 Provider: Gemini (grátis no AI Studio)")
@@ -144,19 +198,40 @@ def main() -> int:
     lp_token = env.get("LP_TOKEN", "")
 
     print("Provider do Chat IA:")
-    print("  1) Gemini grátis (recomendado)")
-    print("  2) Claude SDK (pago — exige spend limit)")
-    print("  3) Ambos (Gemini default, fallback Claude)")
-    escolha = input("Escolha [1/2/3]: ").strip()
+    print("  1) Groq — Llama 3.3 70B grátis (RECOMENDADO, sem cartão)")
+    print("  2) Gemini grátis — Google AI Studio")
+    print("  3) Claude SDK — pago, exige spend limit")
+    print("  4) Pular — chat fica em canned fallback (sem IA real)")
+    escolha = input("Escolha [1/2/3/4]: ").strip()
 
-    if escolha not in {"1", "2", "3"}:
+    if escolha not in {"1", "2", "3", "4"}:
         print("❌ Escolha inválida.")
         return 1
 
     chat_provider = ""
     updates: dict = {}
 
-    if escolha in {"1", "3"}:
+    if escolha == "4":
+        updates["CHAT_PROVIDER"] = "canned"
+        updates["CHAT_IA_DONE"] = "true"
+        save_env(updates)
+        print("ℹ️  Provider salvo: canned (chat IA responde mensagem fixa com link de contato).")
+        print("\n➡️  Próximo passo: python3 setup/setup_deploy.py")
+        return 0
+
+    if escolha == "1":
+        groq_key = coletar_groq()
+        if not groq_key:
+            print("❌ Key Groq vazia.")
+            return 1
+        if local_only:
+            updates["GROQ_API_KEY"] = groq_key
+        else:
+            if not _set_secret("GROQ_API_KEY", groq_key):
+                return 1
+        chat_provider = "groq"
+
+    if escolha == "2":
         gemini_key = coletar_gemini()
         if not gemini_key:
             print("❌ Key Gemini vazia.")
@@ -168,7 +243,7 @@ def main() -> int:
                 return 1
         chat_provider = "gemini"
 
-    if escolha in {"2", "3"}:
+    if escolha == "3":
         claude_key = coletar_claude()
         if not claude_key:
             print("❌ Key Claude vazia ou spend limit não confirmado.")
@@ -178,7 +253,7 @@ def main() -> int:
         else:
             if not _set_secret("ANTHROPIC_API_KEY", claude_key):
                 return 1
-        chat_provider = "claude" if escolha == "2" else "both"
+        chat_provider = "claude"
 
     updates["CHAT_PROVIDER"] = chat_provider
     updates["CHAT_IA_DONE"] = "true"

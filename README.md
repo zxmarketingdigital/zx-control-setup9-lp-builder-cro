@@ -10,8 +10,9 @@ Setup oficial da Semana 9 do ZX Control Scale. Pare de entregar template genéri
 - **Claude Code** instalado e configurado
 - **Node 18+** (block) e **bun** (warning — `brew install bun`; se faltar, npm é fallback)
 - **Conta Cloudflare grátis** — `wrangler login` abre o browser pra criar/entrar
-- **Gemini API key** — `aistudio.google.com` → Get API key (1500 req/dia grátis)
-- *(opcional)* **Claude API key** — `console.anthropic.com` → **defina spend limit ANTES** de criar a key
+- **Groq API key** (recomendado) — `console.groq.com/keys` → login Google → Create Key (Llama 3.3 70B grátis, sem cartão)
+- *(alternativa)* **Gemini API key** — `aistudio.google.com` → Get API key (1500 req/dia compartilhado por conta Google)
+- *(alternativa)* **Claude API key** — `console.anthropic.com` → **defina spend limit ANTES** de criar a key
 
 ## Instalação
 
@@ -44,9 +45,10 @@ zx-control-setup9-lp-builder-cro/
 ├─ lp-template/         # LP estática (Vite + Alpine + Tailwind CDN)
 │  ├─ index.html        # LP pública
 │  ├─ crm.html          # mini CRM
-│  ├─ components/       # componentes HTML
 │  ├─ briefings/        # templates por nicho (modo rápido)
-│  └─ public/           # arquivos servidos publicamente
+│  └─ public/           # arquivos servidos publicamente (Vite publicDir)
+│     ├─ components/    # componentes HTML carregados em runtime
+│     └─ _headers       # cache-control do Cloudflare Pages
 ├─ cloudflare/worker/   # Worker (Hono) + schema D1 (SQLite serverless)
 ├─ scripts/             # automações pós-setup
 ├─ docs/                # documentação (troubleshooting, segurança, métricas)

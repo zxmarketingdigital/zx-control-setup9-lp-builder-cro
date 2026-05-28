@@ -2,22 +2,33 @@
 
 Setup 9 trata dados de leads de clientes do aluno. Estes são os controles obrigatórios.
 
-## Auth do Worker (LP_TOKEN)
+## Auth do Worker (LP_TOKEN por LP)
 
-Todo request a endpoints autenticados exige header `X-LP-Token`. O token vive como secret do Worker (`wrangler secret put LP_TOKEN`) e NUNCA aparece em código commitado.
+Endpoints admin (`GET /leads`, `PATCH /leads/:id`, `GET /usage`) exigem header `X-LP-Token`. O token NÃO é comparado contra um valor único compartilhado — o Worker faz **SHA-256 timing-safe compare** contra `lp_configs.token_hash` (per-LP):
 
-- Rotacionar: `wrangler secret put LP_TOKEN` (novo valor) + atualizar `lp-config.json` da(s) LP(s) que usam esse Worker
-- Aluno pode (futuro) usar 1 LP_TOKEN por LP — v1 mantém 1 por Worker por simplicidade
+- `setup_cloudflare.py` calcula `hashlib.sha256(LP_TOKEN).hexdigest()` e grava em `lp_configs.token_hash`
+- Worker (`cloudflare/worker/src/auth.ts`) faz `crypto.subtle.digest('SHA-256', input)` + compare char-a-char com XOR (constant-time)
+- Token em plaintext só existe em 2 lugares: secret do Worker (criptografado em rest pelo Cloudflare) e `~/.operacao-ia/config/setup9.env` no Mac do aluno (gitignored)
+- Rotação: rode `setup_cloudflare.py` de novo após gerar novo LP_TOKEN — ele atualiza o `token_hash` no D1
 
-## CORS por allowed_origins
+**Fallback de compat**: se `lp_configs.token_hash` é NULL (setups antigos), Worker cai pra compare direto contra `env.LP_TOKEN` (sem timing-safe). Recomendado rodar a migration pra encerrar esse path.
 
-`lp_configs.allowed_origins` (JSON array em D1) define quais domínios podem chamar o Worker:
+## Origin obrigatório (endpoints públicos)
+
+`POST /capture-lead` e `POST /chat-ia` são chamados pelo browser do visitante (sem token). Segurança vem de **3 camadas**:
+
+1. **Origin obrigatório** — header `Origin` ausente → 403 `origin_required`. Bloqueia curl/Postman/server-to-server.
+2. **Allowlist** — `lp_configs.allowed_origins` (JSON array no D1) define quais Origin podem postar:
 
 ```json
-["https://cliente.com.br", "https://www.cliente.com.br", "http://localhost:5173"]
+["https://cliente.com.br", "http://localhost:5173", "https://*.pages.dev"]
 ```
 
-Default proibido `*`. Toda LP precisa preencher pelo menos 1 origin no setup (etapa 4). Origin não declarado retorna 403.
+Formatos aceitos: `https://<host>[:port]`, `http://localhost[:port]`, ou `https://*.pages.dev` (wildcard — Worker faz suffix match).
+
+3. **Rate limit** — cap diário (800/dia por LP+endpoint) — 429 quando excedido. Acima cap o Worker rejeita sem chamar a IA, prevenindo abuse de billing.
+
+Default proibido `*`. `setup_deploy.py` atualiza automaticamente `allowed_origins` no D1 com o domínio `*.pages.dev` canônico após o primeiro deploy.
 
 ## Rate limit (anti-abuse)
 

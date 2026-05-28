@@ -48,20 +48,46 @@ Se `database_id` ainda for `PREENCHIDO_PELO_SETUP_CLOUDFLARE_PY`, rode `setup/se
 
 ## Chat IA retorna canned/silent
 
-Ordem de tentativa: Gemini → Claude → canned. Se cai sempre em canned:
+Ordem de tentativa: **Groq → Gemini → Claude → canned**. Se cai sempre em canned:
 
 ```bash
 # Verificar secrets setados
-wrangler secret list
-# Esperado: LP_TOKEN, GEMINI_API_KEY (e opcionalmente ANTHROPIC_API_KEY)
+wrangler secret list --cwd cloudflare/worker
+# Esperado: LP_TOKEN + algum de GROQ_API_KEY/GEMINI_API_KEY/ANTHROPIC_API_KEY
 
-# Testar Gemini direto
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"contents":[{"parts":[{"text":"oi"}]}]}'
+# Testar Groq direto (GET /models não consome quota)
+curl -H "Authorization: Bearer gsk_..." https://api.groq.com/openai/v1/models | head -c 200
+
+# Ver logs do Worker em tempo real (filtra só erros)
+./scripts/debug_worker.sh chat-ia
 ```
 
-Se Gemini falha com 429 → cota free esgotou hoje (1500/dia). Aguarde reset (00h PT) ou ative Claude fallback.
+Causas comuns:
+- HTTP 401 Groq → key inválida, regerar em https://console.groq.com/keys
+- HTTP 429 Groq → rate limit por minuto (30 RPM). Aguarde 1min.
+- HTTP 429 Gemini → cota free esgotou (1500/dia, **por conta Google**, compartilhado entre projetos). Espera reset 00h UTC ou troca pra Groq via `setup_chat_ia.py`.
+
+## Chat IA exibe resposta vazia (bubble cinza pequeno)
+
+Em versões antigas do template, o histórico Alpine não atualizava em tempo real. Sintoma: chat envia mensagem, mas o bubble do bot fica vazio (chip cinza pequeno).
+
+Causa: `chatMessages.push(botMsg)` cria proxy reativo do objeto, mas mutar `botMsg.content` direto (variável local) não dispara re-render.
+
+Fix: mutar via índice — `chatMessages[botIdx].content += delta`. Já corrigido no template atual; se ainda aparece, faça `git pull` e rode `bun run build` no `lp-template/`.
+
+## CRM mostra "Erro ao carregar leads: Failed to fetch"
+
+Sintoma: CRM abre, prompt aceita o LP_TOKEN, mas tabela fica vazia + alert de erro.
+
+Causa: endpoint admin do Worker (`GET /leads`, `PATCH /leads/:id`, `/usage`) retornando JSON **sem headers CORS** — preflight passa mas response real é bloqueada silenciosamente pelo browser.
+
+Fix: confirmar que `cloudflare/worker/src/index.ts` usa `jsonWithCors()` em vez de `c.json()` nesses endpoints. Se o seu commit é antigo, faça `git pull` + `cd cloudflare/worker && wrangler deploy`.
+
+## "Failed to fetch" no form de captura, mas curl direto funciona
+
+Causa: preflight CORS do browser bate em `OPTIONS /capture-lead` **sem** `?lp_id=` (browser não inclui headers custom no preflight). Worker retorna 204 sem `Access-Control-Allow-Origin` → preflight falha → POST nunca acontece.
+
+Fix: client deve incluir `?lp_id=...` na URL do fetch (não só no header X-LP-Id). Já corrigido no template atual; `git pull` + rebuild se aparecer.
 
 ## CORS bloqueia captura na LP em produção
 

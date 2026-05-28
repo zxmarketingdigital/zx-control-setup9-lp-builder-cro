@@ -1,0 +1,17 @@
+# Cloudflare Pages _headers
+# Documentação: https://developers.cloudflare.com/pages/configuration/headers/
+
+# HTML + JSON dinâmico (config da LP) — nunca cachear no browser
+# Bypass: revalidação obrigatória em todo request.
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/lp-public.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+/components/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Assets com hash no nome (Vite emite styles-XXXXX.css) — cache longo + immutable
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
