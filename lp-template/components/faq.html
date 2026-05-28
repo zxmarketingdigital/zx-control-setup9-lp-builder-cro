@@ -1,0 +1,39 @@
+<section class="section" aria-labelledby="faq-title" x-data="{ open: null }">
+  <div class="container" style="max-width: 760px;">
+    <div class="text-center" style="margin-bottom: 1rem;">
+      <h2 id="faq-title" style="font-size: clamp(1.5rem, 3vw, 2.25rem); margin-bottom: 0.75rem;">
+        Perguntas frequentes
+      </h2>
+      <p class="muted">Tirou a sua dúvida? Manda mensagem que respondemos.</p>
+    </div>
+
+    <div class="faq__list" role="list">
+      <template x-for="(item, i) in LP_CONFIG.copy.faq" :key="i">
+        <div
+          class="faq-item"
+          role="listitem"
+          :data-open="open === i ? 'true' : 'false'"
+        >
+          <button
+            type="button"
+            class="faq-item__btn"
+            :aria-expanded="open === i"
+            :aria-controls="'faq-body-' + i"
+            @click="open = open === i ? null : i"
+          >
+            <span x-text="item.q"></span>
+            <span class="faq-item__chev" aria-hidden="true">▾</span>
+          </button>
+          <div
+            class="faq-item__body"
+            :id="'faq-body-' + i"
+            x-show="open === i"
+            x-transition.duration.200ms
+          >
+            <p x-text="item.a"></p>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,20 @@
+<section class="section features" aria-labelledby="features-title">
+  <div class="container">
+    <div class="text-center">
+      <h2 id="features-title" style="font-size: clamp(1.5rem, 3vw, 2.25rem); margin-bottom: 0.75rem;">
+        Por que escolher a gente
+      </h2>
+      <p class="muted">O que você ganha ao trabalhar com a nossa equipe.</p>
+    </div>
+
+    <div class="features__grid">
+      <template x-for="(f, i) in LP_CONFIG.copy.features" :key="i">
+        <article class="feature-card">
+          <div class="feature-card__icon" x-text="f.icon" aria-hidden="true"></div>
+          <h3 class="feature-card__title" x-text="f.title"></h3>
+          <p class="feature-card__desc" x-text="f.desc"></p>
+        </article>
+      </template>
+    </div>
+  </div>
+</section>

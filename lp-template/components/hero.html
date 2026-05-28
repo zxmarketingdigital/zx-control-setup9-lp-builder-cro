@@ -1,0 +1,16 @@
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero__inner">
+    <h1 id="hero-title" class="hero__headline" x-text="LP_CONFIG.copy.hero.headline">
+      Carregando...
+    </h1>
+    <p class="hero__subheadline" x-text="LP_CONFIG.copy.hero.subheadline"></p>
+    <button
+      type="button"
+      class="btn btn--primary btn--lg"
+      @click="modalOpen = true"
+      x-text="LP_CONFIG.copy.hero.cta_label || 'Quero começar'"
+    >
+      Quero começar
+    </button>
+  </div>
+</section>

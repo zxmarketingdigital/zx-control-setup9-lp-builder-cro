@@ -1,0 +1,86 @@
+<div
+  class="modal-overlay"
+  x-show="modalOpen"
+  x-cloak
+  @keydown.escape.window="modalOpen = false"
+  @click.self="modalOpen = false"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="modal-title"
+  x-data="captureForm()"
+>
+  <div class="modal" style="position: relative;">
+    <button
+      type="button"
+      class="modal__close"
+      aria-label="Fechar"
+      @click="modalOpen = false"
+    >×</button>
+
+    <template x-if="!success">
+      <div>
+        <h2 id="modal-title" class="modal__title">Vamos conversar</h2>
+        <p class="modal__desc">Preenche aí — em até 24h respondemos com proposta inicial.</p>
+
+        <form class="modal__form" @submit.prevent="submit()">
+          <div class="field">
+            <label class="field__label" for="cap-name">Nome *</label>
+            <input
+              id="cap-name"
+              class="field__input"
+              type="text"
+              x-model="form.name"
+              required
+              autocomplete="name"
+              placeholder="Como podemos te chamar?"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="cap-email">E-mail *</label>
+            <input
+              id="cap-email"
+              class="field__input"
+              type="email"
+              x-model="form.email"
+              required
+              autocomplete="email"
+              placeholder="voce@email.com"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="cap-whats">WhatsApp</label>
+            <input
+              id="cap-whats"
+              class="field__input"
+              type="tel"
+              x-model="form.whatsapp"
+              @input="form.whatsapp = maskPhone(form.whatsapp)"
+              autocomplete="tel"
+              placeholder="(11) 99999-9999"
+              maxlength="15"
+            >
+          </div>
+
+          <p x-show="error" x-text="error" style="color: #b91c1c; font-size: 0.875rem; margin: 0;"></p>
+
+          <button
+            type="submit"
+            class="btn btn--primary btn--lg"
+            :disabled="submitting"
+            x-text="submitting ? 'Enviando...' : (LP_CONFIG.copy.cta.button_label || 'Enviar')"
+          >Enviar</button>
+        </form>
+      </div>
+    </template>
+
+    <template x-if="success">
+      <div class="modal__success">
+        <div class="modal__success-icon" aria-hidden="true">✓</div>
+        <h2 class="modal__title">Cadastro recebido!</h2>
+        <p class="modal__desc">Em breve entramos em contato.</p>
+      </div>
+    </template>
+  </div>
+</div>

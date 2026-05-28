@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Landing page">
+  <title>Carregando...</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+
+  <link rel="stylesheet" href="/styles.css">
+
+  <script>
+    // Carrega LP_CONFIG ANTES de Alpine inicializar.
+    // Aplica design system (CSS vars + Tailwind theme + título) e libera render.
+    window.LP_CONFIG = null;
+    (function () {
+      fetch('/lp-config.json', { cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('lp-config.json não encontrado (' + r.status + ')');
+          return r.json();
+        })
+        .then(function (cfg) {
+          window.LP_CONFIG = cfg;
+          applyDesignSystem(cfg);
+          loadComponents().then(function () {
+            document.body.dataset.ready = '1';
+            window.dispatchEvent(new CustomEvent('lp-config-ready', { detail: cfg }));
+          });
+        })
+        .catch(function (err) {
+          console.error('[lp] erro carregando config:', err);
+          document.getElementById('splash-label').textContent =
+            'Erro carregando configuração. Verifique lp-config.json.';
+        });
+
+      function applyDesignSystem(cfg) {
+        var ds = cfg.design_system || {};
+        var root = document.documentElement;
+        if (ds.primary) root.style.setProperty('--primary', ds.primary);
+        if (ds.secondary) root.style.setProperty('--secondary', ds.secondary);
+        if (ds.radius) root.style.setProperty('--radius', ds.radius);
+        if (ds.font_heading) root.style.setProperty('--font-heading', '"' + ds.font_heading + '", system-ui, sans-serif');
+        if (ds.font_body) root.style.setProperty('--font-body', '"' + ds.font_body + '", system-ui, sans-serif');
+        if (cfg.name) document.title = cfg.name;
+
+        // Tailwind config (lê CDN já carregado)
+        if (window.tailwind) {
+          window.tailwind.config = {
+            theme: {
+              extend: {
+                colors: {
+                  primary: ds.primary || '#a855f7',
+                  secondary: ds.secondary || '#7c3aed',
+                },
+                fontFamily: {
+                  heading: [ds.font_heading || 'Inter', 'sans-serif'],
+                  body: [ds.font_body || 'Inter', 'sans-serif'],
+                },
+              },
+            },
+          };
+        }
+      }
+
+      function loadComponents() {
+        var slots = [
+          { id: 'slot-hero', src: '/components/hero.html' },
+          { id: 'slot-features', src: '/components/features.html' },
+          { id: 'slot-faq', src: '/components/faq.html' },
+          { id: 'slot-cta', src: '/components/cta.html' },
+          { id: 'slot-footer', src: '/components/footer.html' },
+          { id: 'slot-modal', src: '/components/modal-capture.html' },
+        ];
+        return Promise.all(
+          slots.map(function (s) {
+            return fetch(s.src)
+              .then(function (r) { return r.text(); })
+              .then(function (html) {
+                var el = document.getElementById(s.id);
+                if (el) el.innerHTML = html;
+              })
+              .catch(function (err) {
+                console.error('[lp] componente falhou:', s.src, err);
+              });
+          })
+        );
+      }
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body x-data="lpApp()" x-init="init()" x-cloak>
+
+  <!-- Splash -->
+  <div class="lp-splash" aria-hidden="true">
+    <div class="lp-splash__spinner"></div>
+    <div id="splash-label" class="lp-splash__label">Carregando experiência…</div>
+  </div>
+
+  <!-- Slots dos componentes -->
+  <main>
+    <div id="slot-hero"></div>
+    <div id="slot-features"></div>
+    <div id="slot-faq"></div>
+    <div id="slot-cta"></div>
+  </main>
+
+  <div id="slot-footer"></div>
+  <div id="slot-modal"></div>
+
+  <!-- Botão flutuante chat IA -->
+  <button
+    type="button"
+    class="chat-fab"
+    @click="chatOpen = !chatOpen; if (chatOpen) initChat()"
+    aria-label="Abrir chat com IA"
+  >
+    <span x-show="!chatOpen">💬</span>
+    <span x-show="chatOpen">×</span>
+  </button>
+
+  <div
+    class="chat-panel"
+    x-show="chatOpen"
+    x-cloak
+    x-transition.opacity.duration.200ms
+    role="dialog"
+    aria-label="Chat com IA"
+  >
+    <div class="chat-panel__header">
+      <strong>Atendimento IA</strong>
+      <button
+        type="button"
+        @click="chatOpen = false"
+        aria-label="Fechar chat"
+        style="color: white; font-size: 1.25rem; line-height: 1;"
+      >×</button>
+    </div>
+
+    <div class="chat-panel__messages" x-ref="chatMessages">
+      <template x-for="(m, i) in chatMessages" :key="i">
+        <div :class="'chat-msg chat-msg--' + m.role" x-text="m.content"></div>
+      </template>
+      <div x-show="chatStreaming" class="chat-msg chat-msg--bot" style="opacity: 0.6;">
+        digitando…
+      </div>
+    </div>
+
+    <form class="chat-panel__input" @submit.prevent="sendChat()">
+      <input
+        type="text"
+        x-model="chatInput"
+        placeholder="Digite sua dúvida..."
+        :disabled="chatStreaming"
+        aria-label="Mensagem"
+      >
+      <button type="submit" :disabled="chatStreaming || !chatInput.trim()">Enviar</button>
+    </form>
+  </div>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- App logic -->
+  <script>
+    // UTM tracking persistente
+    (function () {
+      var p = new URLSearchParams(location.search);
+      var keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+      var captured = {};
+      var hasAny = false;
+      keys.forEach(function (k) {
+        var v = p.get(k);
+        if (v) { captured[k] = v; hasAny = true; }
+      });
+      if (hasAny) {
+        try { sessionStorage.setItem('lp_utm', JSON.stringify(captured)); } catch (_) {}
+      }
+    })();
+
+    function getStoredUtm() {
+      try { return JSON.parse(sessionStorage.getItem('lp_utm') || '{}'); }
+      catch (_) { return {}; }
+    }
+
+    function maskPhone(value) {
+      var v = (value || '').replace(/\D/g, '').slice(0, 11);
+      if (v.length <= 2) return v;
+      if (v.length <= 6) return '(' + v.slice(0, 2) + ') ' + v.slice(2);
+      if (v.length <= 10) return '(' + v.slice(0, 2) + ') ' + v.slice(2, 6) + '-' + v.slice(6);
+      return '(' + v.slice(0, 2) + ') ' + v.slice(2, 7) + '-' + v.slice(7);
+    }
+
+    function captureForm() {
+      return {
+        form: { name: '', email: '', whatsapp: '' },
+        submitting: false,
+        success: false,
+        error: '',
+        maskPhone: maskPhone,
+        submit: function () {
+          var self = this;
+          self.error = '';
+          if (!self.form.name.trim() || !self.form.email.trim()) {
+            self.error = 'Preencha nome e e-mail.';
+            return;
+          }
+          self.submitting = true;
+          var payload = Object.assign({}, self.form, getStoredUtm(), {
+            page_url: location.href,
+            referrer: document.referrer || null,
+          });
+          fetch(window.LP_CONFIG.worker_url.replace(/\/$/, '') + '/capture-lead', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-LP-Token': window.LP_CONFIG.lp_token,
+              'X-LP-Id': window.LP_CONFIG.id,
+            },
+            body: JSON.stringify(payload),
+          })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.json().catch(function () { return {}; });
+            })
+            .then(function () {
+              self.success = true;
+              setTimeout(function () {
+                // Fecha modal e reseta após 3s
+                var root = document.querySelector('[x-data="lpApp()"]');
+                if (root && root.__x) root.__x.$data.modalOpen = false;
+                self.success = false;
+                self.form = { name: '', email: '', whatsapp: '' };
+              }, 3000);
+            })
+            .catch(function (err) {
+              console.error('[lp] capture-lead falhou:', err);
+              self.error = 'Não conseguimos enviar agora. Tente novamente em instantes.';
+            })
+            .finally(function () { self.submitting = false; });
+        },
+      };
+    }
+
+    function lpApp() {
+      return {
+        chatOpen: false,
+        modalOpen: false,
+        chatInput: '',
+        chatMessages: [],
+        chatStreaming: false,
+        init: function () {
+          // Aguarda config se ainda não chegou
+          if (!window.LP_CONFIG) {
+            window.addEventListener('lp-config-ready', function () {
+              // Componentes já injetados; Alpine re-inicializa nodes dinâmicos por padrão.
+            }, { once: true });
+          }
+        },
+        initChat: function () {
+          if (this.chatMessages.length === 0) {
+            this.chatMessages.push({
+              role: 'bot',
+              content: 'Oi! Sou o atendimento IA. Qual sua dúvida?',
+            });
+          }
+        },
+        sendChat: function () {
+          var self = this;
+          var msg = self.chatInput.trim();
+          if (!msg) return;
+          self.chatMessages.push({ role: 'user', content: msg });
+          self.chatInput = '';
+          self.chatStreaming = true;
+          self.scrollChat();
+
+          var url = window.LP_CONFIG.worker_url.replace(/\/$/, '') + '/chat-ia';
+          // Streaming via fetch + ReadableStream (SSE chunks "data: {...}\n\n").
+          // Fallback: se chunks vierem como JSON puro, agrega no final.
+          var botMsg = { role: 'bot', content: '' };
+          self.chatMessages.push(botMsg);
+
+          fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'text/event-stream',
+              'X-LP-Token': window.LP_CONFIG.lp_token,
+              'X-LP-Id': window.LP_CONFIG.id,
+            },
+            body: JSON.stringify({ message: msg, history: self.chatMessages.slice(-8) }),
+          })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              if (!r.body || !r.body.getReader) {
+                return r.text().then(function (txt) {
+                  botMsg.content = txt;
+                });
+              }
+              var reader = r.body.getReader();
+              var decoder = new TextDecoder('utf-8');
+              var buffer = '';
+              function pump() {
+                return reader.read().then(function (chunk) {
+                  if (chunk.done) return;
+                  buffer += decoder.decode(chunk.value, { stream: true });
+                  // Parse SSE: linhas "data: <json>" separadas por \n\n
+                  var parts = buffer.split('\n\n');
+                  buffer = parts.pop() || '';
+                  parts.forEach(function (block) {
+                    var line = block.split('\n').find(function (l) { return l.startsWith('data:'); });
+                    if (!line) return;
+                    var data = line.slice(5).trim();
+                    if (!data || data === '[DONE]') return;
+                    try {
+                      var obj = JSON.parse(data);
+                      var delta = obj.delta || obj.content || obj.text || '';
+                      botMsg.content += delta;
+                    } catch (_) {
+                      botMsg.content += data;
+                    }
+                    self.scrollChat();
+                  });
+                  return pump();
+                });
+              }
+              return pump();
+            })
+            .catch(function (err) {
+              console.error('[lp] chat falhou:', err);
+              botMsg.content = botMsg.content ||
+                'Não consegui responder agora. Fale com a gente em ' +
+                (window.LP_CONFIG.fallback_contact_url || 'nosso contato') + '.';
+            })
+            .finally(function () {
+              self.chatStreaming = false;
+              self.scrollChat();
+            });
+        },
+        scrollChat: function () {
+          var self = this;
+          this.$nextTick(function () {
+            var el = self.$refs.chatMessages;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        },
+      };
+    }
+  </script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</body>
+</html>

@@ -1,0 +1,23 @@
+name = "lp-builder-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 binding — preencha após `wrangler d1 create lp-builder-db`
+[[d1_databases]]
+binding = "DB"
+database_name = "lp-builder-db"
+database_id = "PREENCHIDO_PELO_SETUP_CLOUDFLARE_PY"
+
+# Vars públicas (não-secret)
+[vars]
+ENVIRONMENT = "production"
+DEFAULT_DAILY_LIMIT = "800"
+
+# Secrets — definir via `wrangler secret put`:
+#   wrangler secret put LP_TOKEN          (token compartilhado por LP)
+#   wrangler secret put GEMINI_API_KEY    (chat IA default)
+#   wrangler secret put ANTHROPIC_API_KEY (chat IA fallback — opcional)
+
+[observability]
+enabled = true

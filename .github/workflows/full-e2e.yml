@@ -1,0 +1,76 @@
+name: Full E2E (Playwright + Worker local)
+
+on:
+  pull_request:
+    paths:
+      - "lp-template/**"
+      - "cloudflare/worker/**"
+      - "setup/**"
+      - ".github/workflows/full-e2e.yml"
+  workflow_dispatch:
+
+env:
+  SANDBOX_MODE: "1"   # mock chat IA — não consome cota Gemini
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install bun
+        run: curl -fsSL https://bun.sh/install | bash
+
+      - name: Add bun to PATH
+        run: echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
+      - name: Install LP deps
+        working-directory: lp-template
+        run: bun install
+
+      - name: Build LP estática
+        working-directory: lp-template
+        run: bun run build
+
+      - name: Install Worker deps
+        working-directory: cloudflare/worker
+        run: bun install
+
+      - name: Start wrangler dev (background)
+        working-directory: cloudflare/worker
+        run: |
+          npx wrangler dev --local --persist-to=./.wrangler-state --port 8787 &
+          echo "WRANGLER_PID=$!" >> $GITHUB_ENV
+          sleep 8
+
+      - name: Smoke /health
+        run: curl -fsS http://127.0.0.1:8787/health
+
+      - name: Install Playwright + Chromium
+        run: |
+          bun add -d playwright
+          npx playwright install chromium --with-deps
+
+      - name: Run E2E spec
+        env:
+          WORKER_URL: http://127.0.0.1:8787
+          LP_DIST: ${{ github.workspace }}/lp-template/dist
+        run: bun x playwright test --config=playwright.config.ts
+
+      - name: Cleanup
+        if: always()
+        run: kill ${{ env.WRANGLER_PID }} 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-trace
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

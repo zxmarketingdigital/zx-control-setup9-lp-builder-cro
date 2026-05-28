@@ -1,0 +1,14 @@
+<footer class="footer">
+  <div class="container footer__inner">
+    <div>
+      <span x-text="LP_CONFIG.name"></span>
+      ·
+      <span x-text="'© ' + new Date().getFullYear()"></span>
+    </div>
+    <nav aria-label="Links institucionais">
+      <a :href="LP_CONFIG.fallback_contact_url || '#'" target="_blank" rel="noopener">Contato</a>
+      <span style="margin: 0 0.5rem; color: var(--color-border);">·</span>
+      <a href="#" @click.prevent="alert('Política de privacidade em breve.')">Política de privacidade</a>
+    </nav>
+  </div>
+</footer>

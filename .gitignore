@@ -1,0 +1,48 @@
+.env
+.env.local
+*.env
+!.env.template
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+
+# macOS
+.DS_Store
+
+# Cloudflare Wrangler cache
+.wrangler/
+
+# Logs
+*.log
+logs/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Build output (se houver bundler)
+dist/
+build/
+
+# Setup 9 específicos
+lp-template/lp-config.json
+lp-template/briefing.md
+lp-template/briefing-state.json
+lp-template/dist/
+lp-template/node_modules/
+cloudflare/worker/node_modules/
+cloudflare/worker/.wrangler/
+cloudflare/worker/.wrangler-state/
+*.db
+.dev.vars
+playwright-report/
+test-results/

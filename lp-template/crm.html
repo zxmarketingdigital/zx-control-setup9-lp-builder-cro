@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Mini CRM</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+
+  <script>
+    window.LP_CONFIG = null;
+    (function () {
+      fetch('/lp-config.json', { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (cfg) {
+          window.LP_CONFIG = cfg;
+          var ds = cfg.design_system || {};
+          var root = document.documentElement;
+          if (ds.primary) root.style.setProperty('--primary', ds.primary);
+          if (ds.secondary) root.style.setProperty('--secondary', ds.secondary);
+          if (ds.radius) root.style.setProperty('--radius', ds.radius);
+          document.title = (cfg.name || 'Mini CRM') + ' · CRM';
+          document.body.dataset.ready = '1';
+        })
+        .catch(function (err) {
+          console.error('[crm] config falhou:', err);
+        });
+    })();
+  </script>
+</head>
+<body class="crm-shell" x-data="crmApp()" x-init="boot()" x-cloak>
+
+  <div class="lp-splash" aria-hidden="true">
+    <div class="lp-splash__spinner"></div>
+    <div class="lp-splash__label">Carregando CRM…</div>
+  </div>
+
+  <header class="crm-header">
+    <div>
+      <h1 class="crm-title">
+        <span aria-hidden="true">📇</span>
+        <span x-text="(LP_CONFIG && LP_CONFIG.name ? LP_CONFIG.name + ' · ' : '') + 'Mini CRM'"></span>
+      </h1>
+      <p class="muted" style="font-size: 0.9rem; margin-top: 0.25rem;">
+        <span x-text="filtered.length"></span> de <span x-text="leads.length"></span> leads
+        · auto-refresh <span x-text="autoRefresh ? 'ON' : 'OFF'"></span>
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <button type="button" class="btn btn--ghost" @click="loadLeads()" :disabled="loading">
+        <span x-text="loading ? 'Atualizando…' : '↻ Atualizar'"></span>
+      </button>
+      <button type="button" class="btn btn--primary" @click="exportCsv()" :disabled="leads.length === 0">
+        ↓ Exportar CSV
+      </button>
+    </div>
+  </header>
+
+  <div class="crm-toolbar">
+    <input
+      type="search"
+      class="field__input"
+      placeholder="Buscar por nome ou e-mail..."
+      x-model="search"
+      aria-label="Buscar leads"
+    >
+    <select class="field__input" x-model="filterStatus" aria-label="Filtrar por status">
+      <option value="">Todos os status</option>
+      <template x-for="s in STATUSES" :key="s">
+        <option :value="s" x-text="s"></option>
+      </template>
+    </select>
+    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem;">
+      <input type="checkbox" x-model="autoRefresh">
+      Auto-refresh 30s
+    </label>
+    <span class="muted" style="font-size: 0.85rem; text-align: right;" x-text="lastUpdated"></span>
+  </div>
+
+  <div class="crm-table-wrap">
+    <table class="crm-table" aria-label="Lista de leads">
+      <thead>
+        <tr>
+          <th scope="col">Nome</th>
+          <th scope="col">E-mail</th>
+          <th scope="col">WhatsApp</th>
+          <th scope="col">Status</th>
+          <th scope="col">UTM source</th>
+          <th scope="col">Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="lead in paginated" :key="lead.id">
+          <tr @click="openDetail(lead)">
+            <td x-text="lead.name || '—'"></td>
+            <td x-text="lead.email || '—'"></td>
+            <td x-text="lead.whatsapp || '—'"></td>
+            <td>
+              <span
+                :class="'status-pill status-pill--' + (lead.status || 'novo').toLowerCase()"
+                x-text="lead.status || 'novo'"
+              ></span>
+            </td>
+            <td x-text="lead.utm_source || '—'"></td>
+            <td x-text="formatDate(lead.created_at)"></td>
+          </tr>
+        </template>
+        <template x-if="!loading && filtered.length === 0">
+          <tr><td colspan="6"><div class="crm-empty">Nenhum lead encontrado.</div></td></tr>
+        </template>
+        <template x-if="loading && leads.length === 0">
+          <tr><td colspan="6"><div class="crm-empty">Carregando…</div></td></tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="crm-actions" x-show="paginated.length < filtered.length">
+    <button type="button" class="btn btn--ghost" @click="page++">
+      Carregar mais (<span x-text="filtered.length - paginated.length"></span>)
+    </button>
+  </div>
+
+  <!-- Modal de detalhe -->
+  <div
+    class="modal-overlay"
+    x-show="detail"
+    x-cloak
+    @click.self="detail = null"
+    @keydown.escape.window="detail = null"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="modal" style="position: relative; max-width: 560px;" x-show="detail">
+      <button type="button" class="modal__close" aria-label="Fechar" @click="detail = null">×</button>
+      <template x-if="detail">
+        <div>
+          <h2 class="modal__title" x-text="detail.name || 'Lead sem nome'"></h2>
+          <p class="modal__desc" x-text="detail.email || '—'"></p>
+
+          <div class="field" style="margin-bottom: 1rem;">
+            <label class="field__label" for="detail-status">Status</label>
+            <select
+              id="detail-status"
+              class="field__input"
+              :value="detail.status || 'novo'"
+              @change="updateStatus(detail, $event.target.value)"
+            >
+              <template x-for="s in STATUSES" :key="s">
+                <option :value="s" x-text="s"></option>
+              </template>
+            </select>
+          </div>
+
+          <dl style="display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; font-size: 0.9rem;">
+            <dt class="muted">WhatsApp</dt><dd x-text="detail.whatsapp || '—'"></dd>
+            <dt class="muted">Criado em</dt><dd x-text="formatDate(detail.created_at)"></dd>
+            <dt class="muted">UTM source</dt><dd x-text="detail.utm_source || '—'"></dd>
+            <dt class="muted">UTM medium</dt><dd x-text="detail.utm_medium || '—'"></dd>
+            <dt class="muted">UTM campaign</dt><dd x-text="detail.utm_campaign || '—'"></dd>
+            <dt class="muted">UTM term</dt><dd x-text="detail.utm_term || '—'"></dd>
+            <dt class="muted">UTM content</dt><dd x-text="detail.utm_content || '—'"></dd>
+            <dt class="muted">Página</dt><dd style="word-break: break-all;" x-text="detail.page_url || '—'"></dd>
+            <dt class="muted">Referrer</dt><dd style="word-break: break-all;" x-text="detail.referrer || '—'"></dd>
+          </dl>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <script>
+    function crmApp() {
+      return {
+        STATUSES: ['novo', 'contato', 'qualificado', 'cliente', 'perdido'],
+        leads: [],
+        loading: false,
+        search: '',
+        filterStatus: '',
+        page: 1,
+        pageSize: 50,
+        autoRefresh: true,
+        autoRefreshTimer: null,
+        lastUpdated: '',
+        detail: null,
+        token: '',
+
+        boot: function () {
+          var self = this;
+          // Token via querystring ou prompt
+          var qs = new URLSearchParams(location.search);
+          self.token = qs.get('lp_token') || qs.get('token') || '';
+          if (!self.token) {
+            self.token = window.prompt('Cole o lp_token para acessar o CRM:') || '';
+          }
+          if (!self.token) {
+            alert('Token obrigatório.');
+            return;
+          }
+          // Aguarda LP_CONFIG
+          var tries = 0;
+          var waitCfg = setInterval(function () {
+            tries++;
+            if (window.LP_CONFIG) {
+              clearInterval(waitCfg);
+              self.loadLeads();
+              self.startAutoRefresh();
+            } else if (tries > 50) {
+              clearInterval(waitCfg);
+              alert('Falha ao carregar config.');
+            }
+          }, 100);
+        },
+
+        startAutoRefresh: function () {
+          var self = this;
+          if (self.autoRefreshTimer) clearInterval(self.autoRefreshTimer);
+          self.autoRefreshTimer = setInterval(function () {
+            if (self.autoRefresh && !self.loading) self.loadLeads(true);
+          }, 30000);
+        },
+
+        loadLeads: function (silent) {
+          var self = this;
+          if (!silent) self.loading = true;
+          var url = window.LP_CONFIG.worker_url.replace(/\/$/, '') +
+            '/leads?lp_id=' + encodeURIComponent(window.LP_CONFIG.id);
+          fetch(url, {
+            headers: {
+              'X-LP-Token': self.token,
+              'X-LP-Id': window.LP_CONFIG.id,
+            },
+          })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.json();
+            })
+            .then(function (data) {
+              var arr = Array.isArray(data) ? data : (data.leads || data.data || []);
+              self.leads = arr;
+              window.leads = arr; // expose pra debug
+              var d = new Date();
+              self.lastUpdated = 'Atualizado ' + d.toLocaleTimeString('pt-BR');
+            })
+            .catch(function (err) {
+              console.error('[crm] load falhou:', err);
+              if (!silent) alert('Erro ao carregar leads: ' + err.message);
+            })
+            .finally(function () { self.loading = false; });
+        },
+
+        get filtered() {
+          var self = this;
+          var s = self.search.trim().toLowerCase();
+          return self.leads.filter(function (l) {
+            if (self.filterStatus && (l.status || 'novo') !== self.filterStatus) return false;
+            if (!s) return true;
+            return (
+              (l.name || '').toLowerCase().includes(s) ||
+              (l.email || '').toLowerCase().includes(s) ||
+              (l.whatsapp || '').toLowerCase().includes(s)
+            );
+          });
+        },
+
+        get paginated() {
+          return this.filtered.slice(0, this.page * this.pageSize);
+        },
+
+        openDetail: function (lead) {
+          this.detail = lead;
+        },
+
+        updateStatus: function (lead, newStatus) {
+          var self = this;
+          lead.status = newStatus;
+          var url = window.LP_CONFIG.worker_url.replace(/\/$/, '') +
+            '/leads/' + encodeURIComponent(lead.id);
+          fetch(url, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-LP-Token': self.token,
+              'X-LP-Id': window.LP_CONFIG.id,
+            },
+            body: JSON.stringify({ status: newStatus }),
+          })
+            .then(function (r) {
+              if (!r.ok) console.warn('[crm] PATCH não-OK', r.status);
+            })
+            .catch(function (err) {
+              console.warn('[crm] PATCH falhou (worker pode não suportar ainda):', err);
+            });
+        },
+
+        formatDate: function (iso) {
+          if (!iso) return '—';
+          try {
+            var d = new Date(iso);
+            return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          } catch (_) { return iso; }
+        },
+
+        exportCsv: function () {
+          var rows = this.filtered;
+          if (rows.length === 0) return;
+          var cols = ['id', 'name', 'email', 'whatsapp', 'status', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'page_url', 'referrer', 'created_at'];
+          var header = cols.join(',');
+          var body = rows.map(function (r) {
+            return cols.map(function (c) {
+              var v = r[c] == null ? '' : String(r[c]);
+              if (v.includes(',') || v.includes('"') || v.includes('\n')) {
+                v = '"' + v.replace(/"/g, '""') + '"';
+              }
+              return v;
+            }).join(',');
+          }).join('\n');
+          var csv = header + '\n' + body;
+          var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'leads-' + new Date().toISOString().slice(0, 10) + '.csv';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        },
+      };
+    }
+  </script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</body>
+</html>

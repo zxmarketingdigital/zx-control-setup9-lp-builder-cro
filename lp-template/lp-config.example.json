@@ -1,0 +1,94 @@
+{
+  "id": "00000000-0000-4000-8000-000000000000",
+  "name": "Estúdio Camélia",
+  "lp_token": "0123456789abcdef0123456789abcdef",
+  "worker_url": "https://lp-builder-worker.example.workers.dev",
+  "allowed_origins": [
+    "http://localhost:5173",
+    "https://example.pages.dev"
+  ],
+  "design_system": {
+    "primary": "#a855f7",
+    "secondary": "#7c3aed",
+    "font_heading": "Inter",
+    "font_body": "Inter",
+    "radius": "1rem"
+  },
+  "copy": {
+    "hero": {
+      "headline": "Estúdio Camélia — design floral consciente para casamentos memoráveis",
+      "subheadline": "Buquês, arranjos e cenografia natural feitos sob medida em São Paulo. Atendimento curado, sem catálogo pronto.",
+      "cta_label": "Quero meu orçamento"
+    },
+    "features": [
+      {
+        "icon": "🌿",
+        "title": "Flores da estação",
+        "desc": "Trabalhamos com produtores locais — você recebe o que está mais fresco e bonito na semana do evento."
+      },
+      {
+        "icon": "✏️",
+        "title": "Projeto exclusivo",
+        "desc": "Cada noiva ganha um moodboard com paleta, formato dos arranjos e referências visuais antes de fechar."
+      },
+      {
+        "icon": "🚚",
+        "title": "Montagem inclusa",
+        "desc": "Nossa equipe entrega, monta e desmonta a cenografia. Você só precisa estar bonita na hora certa."
+      },
+      {
+        "icon": "💬",
+        "title": "Atendimento 1:1",
+        "desc": "Você fala com a Camélia, não com bot. Ajustes de última hora são tranquilos — temos plano B para tudo."
+      },
+      {
+        "icon": "🌸",
+        "title": "Estilo autoral",
+        "desc": "Estética campestre e silvestre, sem aquele \"casamento de revista\". Cada projeto carrega uma assinatura visual."
+      },
+      {
+        "icon": "📷",
+        "title": "Pronto pra foto",
+        "desc": "Cenários pensados em conjunto com fotógrafo e maquiador — luz, cor e composição já alinhadas."
+      }
+    ],
+    "objections": [
+      {
+        "q": "Vocês são caros?",
+        "a": "Nossos projetos começam em R$ 4.800. Mas o que define o orçamento é volume de flores e cenografia, não quantidade de convidados."
+      },
+      {
+        "q": "Atendem fora de São Paulo?",
+        "a": "Sim, atendemos interior e litoral com custo de deslocamento à parte. Para destination weddings, conversa direta com a Camélia."
+      }
+    ],
+    "faq": [
+      {
+        "q": "Com quanto tempo de antecedência preciso fechar?",
+        "a": "O ideal é entre 4 e 6 meses antes do evento. Sábados de outubro a dezembro lotam rápido — se a sua data é nesse período, antecipe."
+      },
+      {
+        "q": "Posso trocar flores depois de fechar?",
+        "a": "Pode. Até 30 dias antes do evento, ajustes de paleta e tipos de flor são livres. Depois disso, mexemos só em cores próximas."
+      },
+      {
+        "q": "Vocês emitem nota fiscal?",
+        "a": "Sim, somos MEI e emitimos NF de prestação de serviço para o valor total do projeto."
+      },
+      {
+        "q": "Como é o processo do primeiro contato até o evento?",
+        "a": "Briefing por WhatsApp, reunião online de 40 min, moodboard em 5 dias úteis, contrato + 30% sinal, ajustes finais até 1 mês antes, entrega no dia."
+      },
+      {
+        "q": "E se chover no dia?",
+        "a": "Já passamos por isso. Temos plano B para eventos ao ar livre — toldos, sapatilhas para o time e cobertura impermeável para as flores delicadas."
+      }
+    ],
+    "cta": {
+      "headline": "Pronta para começar?",
+      "subheadline": "Conta um pouco da sua festa — em até 24h a Camélia responde com proposta inicial.",
+      "button_label": "Quero meu orçamento"
+    }
+  },
+  "fallback_contact_url": "https://wa.me/5511999999999"
+}
