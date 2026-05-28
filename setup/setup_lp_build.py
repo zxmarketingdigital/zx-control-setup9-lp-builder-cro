@@ -26,10 +26,14 @@ from setup_base import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LP_DIR = REPO_ROOT / "lp-template"
+LP_COMPONENTS_LEGACY = LP_DIR / "components"
+LP_PUBLIC_COMPONENTS = LP_DIR / "public" / "components"
 CONFIG_JSON = LP_DIR / "lp-config.json"
 PUBLIC_DIR = LP_DIR / "public"
 PUBLIC_JSON = PUBLIC_DIR / "lp-public.json"
 DIST_INDEX = LP_DIR / "dist" / "index.html"
+WORKER_DIR = REPO_ROOT / "cloudflare" / "worker"
+WORKER_PKG = WORKER_DIR / "package.json"
 
 # Chaves expostas no JSON público (servido pela LP). lp_token NUNCA entra aqui.
 PUBLIC_KEYS = (
@@ -87,10 +91,57 @@ def _run(cmd: list, cwd: Path) -> int:
         return e.returncode or 1
 
 
+def _migrate_legacy_components() -> None:
+    """Defesa pra alunos que clonaram antes do move components/ → public/components/.
+
+    Se a pasta antiga ainda existir e a nova não tiver todos os arquivos,
+    copia os faltantes (sem sobrescrever). Não apaga a antiga — aluno faz
+    `git rm -r lp-template/components/` depois.
+    """
+    if not LP_COMPONENTS_LEGACY.exists() or not LP_COMPONENTS_LEGACY.is_dir():
+        return
+    LP_PUBLIC_COMPONENTS.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for src in LP_COMPONENTS_LEGACY.glob("*.html"):
+        dst = LP_PUBLIC_COMPONENTS / src.name
+        if not dst.exists():
+            dst.write_bytes(src.read_bytes())
+            copied += 1
+    if copied:
+        print(f"⚠️  {copied} componentes copiados de lp-template/components/ pra public/components/")
+        print("    Apague a pasta antiga: git rm -r lp-template/components/")
+
+
+def _ensure_worker_deps() -> int:
+    """Roda bun/npm install em cloudflare/worker/ — pra hono resolver antes
+    do setup_cloudflare.py fazer `wrangler deploy`."""
+    if not WORKER_PKG.exists():
+        print(f"⚠️  {WORKER_PKG} não existe — pulando install do worker.")
+        return 0
+    if not WORKER_DIR.exists():
+        return 0
+    print("📦 Instalando deps do Worker (cloudflare/worker/)...")
+    if _which("bun"):
+        cmd = ["bun", "install"]
+    elif _which("npm"):
+        cmd = ["npm", "install"]
+    else:
+        print("❌ Nem bun nem npm encontrados pro Worker.")
+        return 1
+    return _run(cmd, WORKER_DIR)
+
+
 def main() -> int:
     ensure_dirs()
     ensure_env_file()
     progress_banner(4, 8, "LP build")
+
+    # Defesa pós-refactor (commit 98144c2): mover components legacy → public/
+    _migrate_legacy_components()
+
+    # Garantir deps do Worker — evita falha em setup_cloudflare.py (hono missing)
+    if _ensure_worker_deps() != 0:
+        return 1
 
     cfg = _read_json(CONFIG_JSON)
     faltando = []
