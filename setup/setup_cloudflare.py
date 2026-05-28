@@ -32,10 +32,31 @@ from setup_base import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LP_DIR = REPO_ROOT / "lp-template"
 CONFIG_JSON = LP_DIR / "lp-config.json"
+BRIEFING_MD = LP_DIR / "briefing.md"
 CLOUDFLARE_DIR = REPO_ROOT / "cloudflare"
 WORKER_DIR = CLOUDFLARE_DIR / "worker"
 WRANGLER_TOML = WORKER_DIR / "wrangler.toml"
 SCHEMA_SQL = WORKER_DIR / "schema.sql"
+
+# UUIDs conhecidos do dev/template — se aparecerem em wrangler.toml,
+# significa que o aluno clonou antes do reset de 28/05/26 e precisa
+# editar manualmente pra placeholder antes de prosseguir.
+KNOWN_DEV_UUIDS = {
+    "d7a151bb-f496-4282-a1a6-fd4c35727b67",  # Rafael Castro
+}
+
+# Colunas que devem existir em cada tabela (target state pra auto-migration).
+EXPECTED_COLUMNS = {
+    "lp_configs": [
+        ("briefing", "TEXT NOT NULL DEFAULT ''"),
+        ("fallback_contact_url", "TEXT"),
+        ("token_hash", "TEXT"),
+    ],
+    "leads": [
+        ("page_url", "TEXT"),
+        ("referrer", "TEXT"),
+    ],
+}
 
 
 def _read_json(path: Path) -> dict:
@@ -113,8 +134,17 @@ def _d1_create_or_reuse() -> Optional[str]:
     toml_text = WRANGLER_TOML.read_text(encoding="utf-8") if WRANGLER_TOML.exists() else ""
     m = re.search(r'database_id\s*=\s*"([0-9a-f-]{36})"', toml_text)
     if m:
-        print(f"♻️  D1 já configurado em wrangler.toml: {m.group(1)}")
-        return m.group(1)
+        existing_id = m.group(1)
+        # Pre-flight: rejeita UUIDs do dev/template (ex: clone antigo).
+        if existing_id in KNOWN_DEV_UUIDS:
+            print(f"❌ wrangler.toml contém database_id do template original ({existing_id}).")
+            print("   Você provavelmente clonou o repo antes do reset de 28/05/26.")
+            print("   Edite cloudflare/worker/wrangler.toml e troque por:")
+            print('     database_id = "PREENCHIDO_PELO_SETUP_CLOUDFLARE_PY"')
+            print("   Depois rode setup_cloudflare.py de novo — ele cria/reusa um D1 da sua conta.")
+            return None
+        print(f"♻️  D1 já configurado em wrangler.toml: {existing_id}")
+        return existing_id
 
     try:
         result = _run(["wrangler", "d1", "create", "lp-builder-db"], cwd=WORKER_DIR, check=False)
@@ -141,6 +171,69 @@ def _patch_wrangler_toml(database_id: str) -> None:
     WRANGLER_TOML.write_text(text, encoding="utf-8")
 
 
+def _table_columns(table: str) -> set:
+    """Retorna set de nomes de coluna existentes na tabela do D1 remoto.
+
+    Usa `wrangler d1 execute --json` + parse stdout. Retorna set vazio
+    se a tabela não existir ou se parse falhar (caller decide se aborta).
+    """
+    result = _run(
+        ["wrangler", "d1", "execute", "lp-builder-db", "--remote", "--json",
+         "--command", f"PRAGMA table_info({table})"],
+        cwd=WORKER_DIR,
+        check=False,
+    )
+    if result.returncode != 0:
+        return set()
+    try:
+        # wrangler --json retorna array [{results: [{name: "id", ...}, ...]}]
+        # Parse defensivo (formato pode variar entre versões do wrangler).
+        payload = json.loads(result.stdout)
+        if isinstance(payload, list) and payload:
+            rows = payload[0].get("results", [])
+        elif isinstance(payload, dict):
+            rows = payload.get("results", [])
+        else:
+            return set()
+        return {row.get("name") for row in rows if isinstance(row, dict) and row.get("name")}
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        return set()
+
+
+def _auto_migrate_schema() -> bool:
+    """Aplica ALTER TABLE ADD COLUMN só pras colunas que faltam.
+
+    Idempotente — re-runs não quebram. Retorna True se sucesso (mesmo
+    que nada precisou migrar), False se algum ALTER falhou.
+    """
+    all_ok = True
+    for table, expected in EXPECTED_COLUMNS.items():
+        existing = _table_columns(table)
+        if not existing:
+            # Tabela ainda não existe ou parse falhou — schema.sql inicial cobre.
+            continue
+        for col_name, col_def in expected:
+            if col_name in existing:
+                continue
+            print(f"  ↳ migrando: ALTER TABLE {table} ADD COLUMN {col_name}")
+            result = _run(
+                ["wrangler", "d1", "execute", "lp-builder-db", "--remote",
+                 "--command", f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"],
+                cwd=WORKER_DIR,
+                check=False,
+            )
+            if result.returncode != 0:
+                err = (result.stderr or "")[-200:]
+                # "duplicate column" pode aparecer se 2 setups concorrentes
+                # — não fatal, só warning.
+                if "duplicate" in err.lower():
+                    print(f"    ⚠️  coluna já existia (race): {col_name}")
+                else:
+                    print(f"    ❌ ALTER falhou: {err}")
+                    all_ok = False
+    return all_ok
+
+
 _NAME_SAFE_RE = re.compile(r"[^A-Za-z0-9 ._\-]")
 _UUID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 
@@ -150,8 +243,22 @@ def _sanitize_name(value: str) -> str:
     return _NAME_SAFE_RE.sub("", value or "").strip()[:120]
 
 
+_ORIGIN_HTTPS_RE = re.compile(r"^https://[A-Za-z0-9.\-]+(?::\d{2,5})?$")
+_ORIGIN_LOCALHOST_RE = re.compile(r"^http://localhost(?::\d{2,5})?$")
+_ORIGIN_PAGES_WILDCARD_RE = re.compile(r"^https://\*\.pages\.dev$")
+
+
 def _sanitize_allowed_origins(origins) -> str:
-    """Valida cada origin como hostname/URL básico e re-serializa como JSON."""
+    """Valida cada origin com schema obrigatório.
+
+    Aceita 3 formatos:
+      - https://<host>[:port]         (LP em domínio próprio ou .pages.dev)
+      - http://localhost[:port]       (dev local)
+      - https://*.pages.dev           (caso especial — Worker faz suffix match)
+
+    Rejeita hostnames crus (ex: 'foo.com' sem schema) — browser envia Origin
+    SEMPRE com schema, então hostname puro NUNCA bate na allowlist.
+    """
     if isinstance(origins, str):
         try:
             parsed = json.loads(origins)
@@ -163,17 +270,68 @@ def _sanitize_allowed_origins(origins) -> str:
     clean = []
     for raw in parsed:
         s = str(raw).strip()
-        # Aceita http://localhost:5173, https://foo.com, foo.com, *.foo.com
         if not s:
             continue
-        if re.match(r"^[A-Za-z0-9.:_/\-*]+$", s):
+        if (_ORIGIN_HTTPS_RE.match(s)
+                or _ORIGIN_LOCALHOST_RE.match(s)
+                or _ORIGIN_PAGES_WILDCARD_RE.match(s)):
             clean.append(s)
+        else:
+            print(f"⚠️  Origin rejeitado (precisa de schema https:// ou http://localhost): {s!r}")
     return json.dumps(clean, ensure_ascii=False)
 
 
 def _stable_owner_id(seed: str) -> str:
     """16 chars hex de sha256 (estável entre runs, ao contrário de hash())."""
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def _token_hash(token: str) -> str:
+    """SHA-256 hex do LP_TOKEN — usado pelo Worker pra compare timing-safe."""
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _load_briefing() -> str:
+    """Carrega briefing.md. Se ausente, prompt fallback."""
+    if BRIEFING_MD.exists():
+        return BRIEFING_MD.read_text(encoding="utf-8").strip()
+    print()
+    print("⚠️  lp-template/briefing.md não encontrado.")
+    print("    Sem briefing, o chat IA da LP vai responder genérico (sem contexto da oferta).")
+    print("    Opções:")
+    print("      1) gerar agora via setup_briefing.py (vou abortar e você roda)")
+    print("      2) colar manualmente aqui (multi-linha, termina com '.' em linha sozinha)")
+    print("      3) deixar vazio e seguir (chat IA fica genérico)")
+    escolha = input("Escolha [1/2/3]: ").strip()
+    if escolha == "1":
+        print("ℹ️  Rode: python3 setup/setup_briefing.py — depois volte e rode setup_cloudflare.py de novo.")
+        return ""
+    if escolha == "2":
+        print("Cole o briefing (termine com '.' em linha sozinha):")
+        linhas = []
+        while True:
+            try:
+                l = input()
+            except EOFError:
+                break
+            if l.strip() == ".":
+                break
+            linhas.append(l)
+        return "\n".join(linhas).strip()
+    return ""
+
+
+def _prompt_fallback_contact(cfg: dict) -> str:
+    """Lê fallback_contact_url de cfg, senão prompt opcional default vazio."""
+    existing = cfg.get("fallback_contact_url", "").strip()
+    if existing:
+        return existing
+    print()
+    print("Qual URL pro chat IA mostrar quando não souber responder?")
+    print("  Ex: https://wa.me/5511999998888  (WhatsApp pro lead falar com você)")
+    print("  Ex: https://cal.com/seu-link     (agendamento)")
+    print("  Deixe vazio pra resposta genérica sem URL.")
+    return input("URL (ou ENTER pra pular): ").strip()
 
 
 def modo_full(cfg: dict, env: dict) -> int:
@@ -193,12 +351,23 @@ def modo_full(cfg: dict, env: dict) -> int:
     if schema_remote.returncode != 0 and "already exists" not in (schema_remote.stdout + schema_remote.stderr).lower():
         print(f"⚠️  Schema apply teve warnings: {(schema_remote.stderr or '')[-300:]}")
 
+    # Auto-migration: ALTER ADD COLUMN só pras colunas que faltam (idempotente).
+    print("🔍 Verificando colunas do schema (auto-migration)...")
+    if not _auto_migrate_schema():
+        print("❌ Auto-migration falhou. Veja logs acima.")
+        return 1
+
     lp_config_id = cfg.get("id", "")
     if not _UUID_RE.match(lp_config_id):
         print(f"❌ lp_config_id inválido (esperado [A-Za-z0-9_-]{{1,64}}): {lp_config_id!r}")
         return 1
 
-    owner_id = _stable_owner_id(env.get("LP_TOKEN", "") + lp_config_id)
+    lp_token = env.get("LP_TOKEN", "")
+    if not lp_token:
+        print("❌ LP_TOKEN ausente no env. Rode setup_lp_build.py primeiro.")
+        return 1
+
+    owner_id = _stable_owner_id(lp_token + lp_config_id)
     if not _UUID_RE.match(owner_id):
         print(f"❌ owner_id sanitização falhou: {owner_id!r}")
         return 1
@@ -209,15 +378,36 @@ def modo_full(cfg: dict, env: dict) -> int:
         return 1
 
     origins_json = _sanitize_allowed_origins(cfg.get("allowed_origins", []))
+    briefing = _load_briefing()
+    fallback_url = _prompt_fallback_contact(cfg)
+    tk_hash = _token_hash(lp_token)
 
     # Monta SQL em arquivo temporário com escape de SQLite (aspas dobradas).
     # Nome/origins já passaram por whitelist; agora só escapar aspa simples.
-    def _q(s: str) -> str:
-        return s.replace("'", "''")
+    def _sql_str(s: str) -> str:
+        """Literal SQLite seguro: aspa simples + escape."""
+        return "'" + s.replace("'", "''") + "'"
 
+    def _sql_str_or_null(s: str) -> str:
+        return _sql_str(s) if s else "NULL"
+
+    # ON CONFLICT DO UPDATE preserva briefing/token_hash/fallback em re-runs
+    # — só atualiza dados que vêm do lp-config.json (name, origins, limit).
+    # Pra resetar briefing, aluno deve passar --reset-briefing (futuro).
     sql_text = (
-        f"INSERT OR REPLACE INTO lp_configs (id, owner_id, name, allowed_origins, daily_limit) "
-        f"VALUES ('{_q(lp_config_id)}', '{_q(owner_id)}', '{_q(nome)}', '{_q(origins_json)}', 800);\n"
+        "INSERT INTO lp_configs (id, owner_id, name, allowed_origins, daily_limit, briefing, fallback_contact_url, token_hash) VALUES ("
+        f"{_sql_str(lp_config_id)}, "
+        f"{_sql_str(owner_id)}, "
+        f"{_sql_str(nome)}, "
+        f"{_sql_str(origins_json)}, "
+        "800, "
+        f"{_sql_str(briefing)}, "
+        f"{_sql_str_or_null(fallback_url)}, "
+        f"{_sql_str(tk_hash)}"
+        ") ON CONFLICT(id) DO UPDATE SET "
+        "name = excluded.name, "
+        "allowed_origins = excluded.allowed_origins, "
+        "daily_limit = excluded.daily_limit;\n"
     )
 
     with tempfile.NamedTemporaryFile(
