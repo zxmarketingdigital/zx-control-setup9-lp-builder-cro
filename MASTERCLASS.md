@@ -18,12 +18,12 @@ Roteiro da aula em vídeo gravada pelo Rafael. Cortes referenciados por timestam
 
 | # | Título | Start | End | Bunny GUID |
 |---|--------|-------|-----|------------|
-| 1 | Hook + por que LP profissional vence template | 00:00 | 05:00 | `BUNNY_GUID_S9_C1` |
-| 2 | Demo end-to-end: briefing → LP publicada em 40min | 05:00 | 13:00 | `BUNNY_GUID_S9_C2` |
-| 3 | Walkthrough das 8 etapas no Claude do aluno | 13:00 | 31:00 | `BUNNY_GUID_S9_C3` |
-| 4 | Mini CRM + Chat IA com streaming explicados | 31:00 | 41:00 | `BUNNY_GUID_S9_C4` |
-| 5 | Casos de uso reais: precificação e venda | 41:00 | 48:00 | `BUNNY_GUID_S9_C5` |
-| 6 | Fechamento + /clonar-lp pra próximo cliente | 48:00 | 50:00 | `BUNNY_GUID_S9_C6` |
+| 1 | Hook + visão geral | 00:00 | 09:06 | `0dc06fe0-02e8-4e93-bf51-fa6a1386c2f2` |
+| 2 | Demo: briefing → DS → LP → Cloudflare | 09:06 | 37:28 | `c408d82c-f073-4b66-a984-961d503d53c5` |
+| 3 | Chat IA + publicação | 37:28 | 49:29 | `346d14f7-e573-47fe-b652-310560aa144f` |
+| 4 | Skill revisão + dry run | 49:29 | 1:10:10 | `ec6c94aa-c313-4e80-8c0c-a6656d3f9314` |
+| 5 | Cota Gemini + fixes + Q&A | 1:10:10 | 1:30:12 | `a6d7d906-4a6a-4c03-9bc2-8862e94aa5e5` |
+| 6 | Performance + fechamento | 1:30:12 | 1:41:57 | `aeeb4317-1f6f-40d7-92d9-b48ec74257ff` |
 
 
 ## Roteiro
