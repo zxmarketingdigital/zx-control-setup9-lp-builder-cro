@@ -63,17 +63,35 @@ def _smoke_chat(worker_url: str, lp_token: str) -> None:
     if not worker_url:
         print("⚠️  Sem WORKER_URL — pulando smoke do chat.")
         return
+    # /chat-ia é endpoint público — não precisa de X-LP-Token. Só X-LP-Id.
+    # Mas no smoke, passamos um Origin que está na allowlist pra simular a LP.
+    cfg_path = REPO_ROOT / "lp-template" / "lp-config.json"
+    lp_id = ""
+    origin_header = ""
+    try:
+        import json as _json
+        cfg = _json.loads(cfg_path.read_text(encoding="utf-8"))
+        lp_id = cfg.get("id", "")
+        origins = cfg.get("allowed_origins", [])
+        if origins:
+            origin_header = origins[0] if origins[0].startswith("http") else f"https://{origins[0]}"
+    except (OSError, _json.JSONDecodeError):
+        pass
+
     url = f"{worker_url}/chat-ia"
     payload = json.dumps({"messages": [{"role": "user", "content": "Olá, isso é um teste."}]})
     print(f"🧪 Smoke POST {url}")
     try:
+        curl_cmd = [
+            "curl", "-sS", "-N", "--max-time", "15",
+            "-H", "Content-Type: application/json",
+            "-H", f"X-LP-Id: {lp_id}",
+        ]
+        if origin_header:
+            curl_cmd += ["-H", f"Origin: {origin_header}"]
+        curl_cmd += ["-X", "POST", "-d", payload, url]
         result = subprocess.run(
-            [
-                "curl", "-sS", "-N", "--max-time", "15",
-                "-H", "Content-Type: application/json",
-                "-H", f"Authorization: Bearer {lp_token}",
-                "-X", "POST", "-d", payload, url,
-            ],
+            curl_cmd,
             capture_output=True, text=True, check=False, timeout=20,
         )
         body = (result.stdout or "")[:400]

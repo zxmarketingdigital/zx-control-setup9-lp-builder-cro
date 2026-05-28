@@ -81,6 +81,19 @@ def check_command(name: str, label: Optional[str] = None) -> bool:
     return _check(label, path is not None, path or "não encontrado")
 
 
+def warn_command(name: str, label: Optional[str] = None, fallback_msg: str = "") -> bool:
+    """Como check_command, mas retorna True mesmo se faltar — só emite warning.
+    Use pra deps opcionais com fallback (ex: bun → npm)."""
+    label = label or name
+    path = shutil.which(name)
+    if path:
+        _check(label, True, path)
+    else:
+        msg = f"não encontrado — {fallback_msg}" if fallback_msg else "não encontrado"
+        print(f"  ⚠️  {label}: {msg}")
+    return True
+
+
 def check_dir(path: Path, label: Optional[str] = None) -> bool:
     label = label or str(path)
     return _check(label, path.exists() and path.is_dir(), str(path))
@@ -106,7 +119,8 @@ def main() -> int:
     checks.append(check_command("git"))
     checks.append(check_command("python3"))
     checks.append(check_command("node"))
-    checks.append(check_command("bun"))
+    # bun é WARNING, não block — npm é fallback.
+    warn_command("bun", fallback_msg="npm será usado como fallback")
 
     # Diretórios base
     base = Path.home() / ".operacao-ia"

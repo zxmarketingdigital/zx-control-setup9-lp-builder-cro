@@ -35,6 +35,7 @@ build/
 
 # Setup 9 específicos
 lp-template/lp-config.json
+lp-template/public/lp-public.json
 lp-template/briefing.md
 lp-template/briefing-state.json
 lp-template/dist/

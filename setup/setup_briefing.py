@@ -129,8 +129,14 @@ def modo_profundo() -> int:
         print("🔄 Briefing em andamento detectado. Continuar de onde parou? [s/N]:")
         resp = input().strip().lower()
         if resp != "s":
-            state = {}
-            STATE_JSON.unlink(missing_ok=True)
+            # Confirmação dupla — apagar autosave é destrutivo.
+            print("⚠️  Tem certeza? O briefing atual será APAGADO e você começa do zero. [s/N]:")
+            conf = input().strip().lower()
+            if conf != "s":
+                print("ℹ️  Operação cancelada. Retomando do estado salvo.")
+            else:
+                state = {}
+                STATE_JSON.unlink(missing_ok=True)
 
     state.setdefault("respostas", {})
     nome_cliente = state.get("nome_cliente") or input("Nome do cliente: ").strip() or "Cliente"

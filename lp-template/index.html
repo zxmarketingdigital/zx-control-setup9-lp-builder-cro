@@ -17,9 +17,10 @@
     // Aplica design system (CSS vars + Tailwind theme + título) e libera render.
     window.LP_CONFIG = null;
     (function () {
-      fetch('/lp-config.json', { cache: 'no-store' })
+      // Config pública (sem lp_token) — gerada pelo setup_lp_build.py em public/lp-public.json
+      fetch('/lp-public.json', { cache: 'no-store' })
         .then(function (r) {
-          if (!r.ok) throw new Error('lp-config.json não encontrado (' + r.status + ')');
+          if (!r.ok) throw new Error('lp-public.json não encontrado (' + r.status + ')');
           return r.json();
         })
         .then(function (cfg) {
@@ -195,30 +196,51 @@
       return '(' + v.slice(0, 2) + ') ' + v.slice(2, 7) + '-' + v.slice(7);
     }
 
+    var EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    function validatePhoneBR(value) {
+      // Aceita 10 a 13 dígitos (com ou sem DDI). Padrão BR: 10 a 11 dígitos sem DDI.
+      var digits = (value || '').replace(/\D/g, '');
+      return digits.length >= 10 && digits.length <= 13;
+    }
+
     function captureForm() {
       return {
         form: { name: '', email: '', whatsapp: '' },
         submitting: false,
         success: false,
         error: '',
+        fieldErrors: { email: '', whatsapp: '' },
         maskPhone: maskPhone,
         submit: function () {
           var self = this;
           self.error = '';
-          if (!self.form.name.trim() || !self.form.email.trim()) {
-            self.error = 'Preencha nome e e-mail.';
+          self.fieldErrors = { email: '', whatsapp: '' };
+
+          if (!self.form.name.trim() || self.form.name.trim().length < 2) {
+            self.error = 'Informe seu nome.';
             return;
           }
+          if (!EMAIL_REGEX.test((self.form.email || '').trim())) {
+            self.fieldErrors.email = 'E-mail inválido (ex: voce@email.com).';
+            return;
+          }
+          if (!validatePhoneBR(self.form.whatsapp)) {
+            self.fieldErrors.whatsapp = 'WhatsApp inválido. Use (DDD) 9XXXX-XXXX.';
+            return;
+          }
+
           self.submitting = true;
           var payload = Object.assign({}, self.form, getStoredUtm(), {
             page_url: location.href,
             referrer: document.referrer || null,
           });
+          // Endpoint público — NÃO mandar X-LP-Token (admin only).
+          // Segurança: Origin allowlist + rate limit no Worker.
           fetch(window.LP_CONFIG.worker_url.replace(/\/$/, '') + '/capture-lead', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-LP-Token': window.LP_CONFIG.lp_token,
               'X-LP-Id': window.LP_CONFIG.id,
             },
             body: JSON.stringify(payload),
@@ -284,12 +306,12 @@
           var botMsg = { role: 'bot', content: '' };
           self.chatMessages.push(botMsg);
 
+          // Endpoint público — sem X-LP-Token (segurança vem do Origin allowlist + rate limit).
           fetch(url, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'text/event-stream',
-              'X-LP-Token': window.LP_CONFIG.lp_token,
               'X-LP-Id': window.LP_CONFIG.id,
             },
             body: JSON.stringify({ message: msg, history: self.chatMessages.slice(-8) }),

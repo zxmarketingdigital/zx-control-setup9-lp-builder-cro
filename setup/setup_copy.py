@@ -51,6 +51,24 @@ def _lint_tecnico(texto: str, secao: str) -> None:
         print(f"⚠️  Lint [{secao}]: {len(encontradas)} palavras técnicas detectadas ({', '.join(set(encontradas))}). Revise pra linguagem mais simples.")
 
 
+def _coletar_multilinha(prompt: str) -> str:
+    """Coleta input multi-linha. Linhas em branco SÃO preservadas.
+    Para terminar: linha contendo apenas '.' (ponto) ou 'EOF'."""
+    print(prompt)
+    print("(termine com '.' em linha sozinha ou 'EOF')")
+    linhas = []
+    while True:
+        try:
+            linha = input()
+        except EOFError:
+            break
+        stripped = linha.strip()
+        if stripped in (".", "EOF"):
+            break
+        linhas.append(linha)
+    return "\n".join(linhas).strip()
+
+
 def _coletar_secao(nome: str, framework: str, briefing_path: Path) -> str:
     print()
     print(f"━━ Seção: {nome.upper()} ━━")
@@ -64,24 +82,41 @@ def _coletar_secao(nome: str, framework: str, briefing_path: Path) -> str:
         print(f"📝 Cole no Claude o briefing.md ({briefing_path}) e peça:")
         print(f"   \"Escreva a seção {nome} da LP no framework {framework}.\"")
         print()
-        print(f"Depois cole o texto retornado aqui (linha vazia pra terminar):")
+        texto = _coletar_multilinha(f"Depois cole o texto retornado aqui:")
     else:
-        print(f"Cole o texto da seção {nome} (linha vazia pra terminar):")
-
-    linhas = []
-    while True:
-        try:
-            linha = input()
-        except EOFError:
-            break
-        if linha == "":
-            if linhas:
-                break
-            continue
-        linhas.append(linha)
-    texto = "\n".join(linhas).strip()
+        texto = _coletar_multilinha(f"Cole o texto da seção {nome}:")
     _lint_tecnico(texto, nome)
     return texto
+
+
+def _coletar_hero(framework: str, briefing_path: Path) -> dict:
+    """Hero estruturado: headline + subheadline + cta_label."""
+    print()
+    print("━━ Seção: HERO (3 sub-campos) ━━")
+    headline = input("Hero headline (frase forte de impacto, 1 linha): ").strip()
+    subheadline = input("Hero subheadline (1-2 linhas expandindo a promessa): ").strip()
+    cta_label = input("Hero CTA label (texto exato do botão, ex: 'Quero meu diagnóstico'): ").strip()
+    _lint_tecnico(headline + " " + subheadline + " " + cta_label, "hero")
+    return {
+        "headline": headline,
+        "subheadline": subheadline,
+        "cta_label": cta_label,
+    }
+
+
+def _coletar_cta_final(framework: str, briefing_path: Path) -> dict:
+    """CTA final estruturado: headline + subheadline + button_label."""
+    print()
+    print("━━ Seção: CTA FINAL (3 sub-campos) ━━")
+    headline = input("CTA headline (ex: 'Pronto pra começar?'): ").strip()
+    subheadline = input("CTA subheadline (frase incentivando ação): ").strip()
+    button_label = input("CTA button label (texto do botão): ").strip()
+    _lint_tecnico(headline + " " + subheadline + " " + button_label, "cta")
+    return {
+        "headline": headline,
+        "subheadline": subheadline,
+        "button_label": button_label,
+    }
 
 
 def _coletar_lista(nome: str, framework: str, briefing_path: Path, n: int) -> list:
@@ -127,11 +162,11 @@ def main() -> int:
         print("❌ Escolha inválida.")
         return 1
 
-    hero = _coletar_secao("hero", framework, BRIEFING_MD)
+    hero = _coletar_hero(framework, BRIEFING_MD)
     features = _coletar_lista("features", framework, BRIEFING_MD, 3)
     objections = _coletar_lista("objeções", framework, BRIEFING_MD, 3)
     faq = _coletar_faq(framework, BRIEFING_MD, 5)
-    cta = _coletar_secao("cta", framework, BRIEFING_MD)
+    cta = _coletar_cta_final(framework, BRIEFING_MD)
 
     cfg = _read_json(CONFIG_JSON)
     cfg["copy"] = {

@@ -7,12 +7,14 @@ Modo full: wrangler login → d1 create → schema apply → INSERT lp_configs
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -139,8 +141,39 @@ def _patch_wrangler_toml(database_id: str) -> None:
     WRANGLER_TOML.write_text(text, encoding="utf-8")
 
 
-def _esc_sql(value: str) -> str:
-    return value.replace("'", "''")
+_NAME_SAFE_RE = re.compile(r"[^A-Za-z0-9 ._\-]")
+_UUID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+
+
+def _sanitize_name(value: str) -> str:
+    """Whitelist rígido — só [A-Za-z0-9 ._-]. Resto é removido."""
+    return _NAME_SAFE_RE.sub("", value or "").strip()[:120]
+
+
+def _sanitize_allowed_origins(origins) -> str:
+    """Valida cada origin como hostname/URL básico e re-serializa como JSON."""
+    if isinstance(origins, str):
+        try:
+            parsed = json.loads(origins)
+        except json.JSONDecodeError:
+            parsed = [o.strip() for o in origins.split(",") if o.strip()]
+    else:
+        parsed = list(origins or [])
+
+    clean = []
+    for raw in parsed:
+        s = str(raw).strip()
+        # Aceita http://localhost:5173, https://foo.com, foo.com, *.foo.com
+        if not s:
+            continue
+        if re.match(r"^[A-Za-z0-9.:_/\-*]+$", s):
+            clean.append(s)
+    return json.dumps(clean, ensure_ascii=False)
+
+
+def _stable_owner_id(seed: str) -> str:
+    """16 chars hex de sha256 (estável entre runs, ao contrário de hash())."""
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
 def modo_full(cfg: dict, env: dict) -> int:
@@ -161,19 +194,53 @@ def modo_full(cfg: dict, env: dict) -> int:
         print(f"⚠️  Schema apply teve warnings: {(schema_remote.stderr or '')[-300:]}")
 
     lp_config_id = cfg.get("id", "")
-    owner_id = str(abs(hash(env.get("LP_TOKEN", "") + lp_config_id)))[:16]
-    allowed_origins = ",".join(cfg.get("allowed_origins", []))
-    nome = _esc_sql(cfg.get("name", ""))
-    origins_esc = _esc_sql(allowed_origins)
-    cmd_sql = (
+    if not _UUID_RE.match(lp_config_id):
+        print(f"❌ lp_config_id inválido (esperado [A-Za-z0-9_-]{{1,64}}): {lp_config_id!r}")
+        return 1
+
+    owner_id = _stable_owner_id(env.get("LP_TOKEN", "") + lp_config_id)
+    if not _UUID_RE.match(owner_id):
+        print(f"❌ owner_id sanitização falhou: {owner_id!r}")
+        return 1
+
+    nome = _sanitize_name(cfg.get("name", ""))
+    if not nome:
+        print("❌ name do cliente vazio após sanitização. Rode setup_briefing.py.")
+        return 1
+
+    origins_json = _sanitize_allowed_origins(cfg.get("allowed_origins", []))
+
+    # Monta SQL em arquivo temporário com escape de SQLite (aspas dobradas).
+    # Nome/origins já passaram por whitelist; agora só escapar aspa simples.
+    def _q(s: str) -> str:
+        return s.replace("'", "''")
+
+    sql_text = (
         f"INSERT OR REPLACE INTO lp_configs (id, owner_id, name, allowed_origins, daily_limit) "
-        f"VALUES ('{lp_config_id}', '{owner_id}', '{nome}', '{origins_esc}', 800);"
+        f"VALUES ('{_q(lp_config_id)}', '{_q(owner_id)}', '{_q(nome)}', '{_q(origins_json)}', 800);\n"
     )
-    ins = _run(["wrangler", "d1", "execute", "lp-builder-db", "--remote", "--command", cmd_sql], cwd=WORKER_DIR, check=False)
-    if ins.returncode != 0:
-        print(f"⚠️  INSERT lp_configs warning: {(ins.stderr or '')[-300:]}")
-    else:
-        print(f"✅ lp_configs row inserida (id={lp_config_id})")
+
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".sql", delete=False, dir=str(WORKER_DIR), encoding="utf-8"
+    ) as tmp:
+        tmp.write(sql_text)
+        tmp_path = Path(tmp.name)
+
+    try:
+        ins = _run(
+            ["wrangler", "d1", "execute", "lp-builder-db", "--remote", f"--file={tmp_path.name}"],
+            cwd=WORKER_DIR,
+            check=False,
+        )
+        if ins.returncode != 0:
+            print(f"⚠️  INSERT lp_configs warning: {(ins.stderr or '')[-300:]}")
+        else:
+            print(f"✅ lp_configs row inserida (id={lp_config_id})")
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
 
     lp_token = env.get("LP_TOKEN", "")
     if not lp_token:

@@ -27,7 +27,32 @@ from setup_base import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LP_DIR = REPO_ROOT / "lp-template"
 CONFIG_JSON = LP_DIR / "lp-config.json"
+PUBLIC_DIR = LP_DIR / "public"
+PUBLIC_JSON = PUBLIC_DIR / "lp-public.json"
 DIST_INDEX = LP_DIR / "dist" / "index.html"
+
+# Chaves expostas no JSON público (servido pela LP). lp_token NUNCA entra aqui.
+PUBLIC_KEYS = (
+    "id",
+    "name",
+    "design_system",
+    "copy",
+    "worker_url",
+    "allowed_origins",
+    "fallback_contact_url",
+    "cta_principal",
+    "nicho",
+)
+
+
+def _write_public_json(cfg: dict) -> None:
+    """Grava lp-template/public/lp-public.json (servido pela LP) sem lp_token."""
+    public_cfg = {k: cfg[k] for k in PUBLIC_KEYS if k in cfg}
+    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    PUBLIC_JSON.write_text(
+        json.dumps(public_cfg, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 def _read_json(path: Path) -> dict:
@@ -93,6 +118,10 @@ def main() -> int:
             return 1
     cfg["allowed_origins"] = origens
     _write_json(CONFIG_JSON, cfg)
+
+    # JSON público (sem lp_token) — servido pela LP em runtime
+    _write_public_json(cfg)
+    print(f"✅ lp-public.json gerado em {PUBLIC_JSON} (sem lp_token)")
 
     if not LP_DIR.exists():
         print(f"❌ Pasta {LP_DIR} não existe — repo incompleto.")

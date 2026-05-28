@@ -14,6 +14,8 @@ export interface ChatRequest {
   fallbackContactUrl?: string;  // wa.me/... pra canned response
 }
 
+export type ChunkCallback = (chunk: string) => void;
+
 const CANNED_FALLBACK = (waUrl?: string) =>
   waUrl
     ? `Estou temporariamente com alta demanda. Pode falar direto com a equipe humana aqui: ${waUrl}`
@@ -47,11 +49,15 @@ async function* streamGemini(
     parts: [{ text: m.content }],
   }));
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+  // Key vai no header (não na URL) pra evitar log accidental.
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse";
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents,
@@ -150,6 +156,7 @@ async function* streamClaude(
 export async function streamChat(
   env: Env,
   req: ChatRequest,
+  onChunk?: ChunkCallback,
 ): Promise<{ stream: ReadableStream<Uint8Array>; provider: string }> {
   const systemPrompt = buildSystemPrompt(req.briefing, req.lpName);
   const encoder = new TextEncoder();
@@ -164,6 +171,9 @@ export async function streamChat(
         try {
           provider = name;
           for await (const chunk of gen) {
+            if (onChunk) {
+              try { onChunk(chunk); } catch { /* ignora erro de callback */ }
+            }
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
           }
           return true;
@@ -197,6 +207,9 @@ export async function streamChat(
       // 3. canned
       provider = "canned";
       const canned = CANNED_FALLBACK(req.fallbackContactUrl);
+      if (onChunk) {
+        try { onChunk(canned); } catch { /* ignora */ }
+      }
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: canned })}\n\n`));
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, provider })}\n\n`));
       controller.close();

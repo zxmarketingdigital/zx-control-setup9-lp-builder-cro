@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Setup 9 — Etapa 6: Mini CRM.
 
-Injeta WORKER_URL + LP_TOKEN no crm.html (substitui placeholders).
+Grava WORKER_URL + LP_TOKEN em lp-config.json (privado, gitignored) e
+regenera lp-public.json (sem lp_token, servido pela LP). crm.html lê tudo
+em runtime via fetch — sem placeholders.
 Smoke: GET /leads no Worker e mostra count. Em modo local-only, usa path local.
 """
 from __future__ import annotations
@@ -25,10 +27,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LP_DIR = REPO_ROOT / "lp-template"
 CRM_HTML = LP_DIR / "crm.html"
 CONFIG_JSON = LP_DIR / "lp-config.json"
+PUBLIC_DIR = LP_DIR / "public"
+PUBLIC_JSON = PUBLIC_DIR / "lp-public.json"
 
-
-PLACEHOLDER_WORKER = "__WORKER_URL__"
-PLACEHOLDER_TOKEN = "__LP_TOKEN__"
+# Mesma allowlist do setup_lp_build.py — manter sincronizado.
+PUBLIC_KEYS = (
+    "id",
+    "name",
+    "design_system",
+    "copy",
+    "worker_url",
+    "allowed_origins",
+    "fallback_contact_url",
+    "cta_principal",
+    "nicho",
+)
 
 
 def _read_json(path: Path) -> dict:
@@ -38,6 +51,20 @@ def _read_json(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_public_json(cfg: dict) -> None:
+    public_cfg = {k: cfg[k] for k in PUBLIC_KEYS if k in cfg}
+    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    PUBLIC_JSON.write_text(
+        json.dumps(public_cfg, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 def _mascarar(token: str) -> str:
@@ -75,18 +102,27 @@ def main() -> int:
             return 1
         print(f"ℹ️  Worker URL: {endpoint}")
 
-    html = CRM_HTML.read_text(encoding="utf-8")
-    if PLACEHOLDER_WORKER not in html and PLACEHOLDER_TOKEN not in html:
-        print(f"⚠️  Placeholders {PLACEHOLDER_WORKER}/{PLACEHOLDER_TOKEN} não encontrados em crm.html. Re-injetando direto.")
-    html_novo = html.replace(PLACEHOLDER_WORKER, endpoint).replace(PLACEHOLDER_TOKEN, lp_token)
-    CRM_HTML.write_text(html_novo, encoding="utf-8")
-    print(f"✅ crm.html injetado com WORKER_URL e LP_TOKEN (token mascarado: {_mascarar(lp_token)})")
+    # Merge worker_url + lp_token em lp-config.json (privado, gitignored).
+    cfg["worker_url"] = endpoint
+    cfg["lp_token"] = lp_token
+    _write_json(CONFIG_JSON, cfg)
+    print(f"✅ worker_url e lp_token gravados em lp-config.json (token mascarado: {_mascarar(lp_token)})")
+
+    # Regenera lp-public.json com worker_url incluso (mas SEM lp_token).
+    _write_public_json(cfg)
+    print(f"✅ lp-public.json regenerado em {PUBLIC_JSON} (sem lp_token)")
 
     if not local_only and endpoint:
         url_leads = f"{endpoint}/leads"
+        lp_config_id = cfg.get("id", "")
         try:
             result = subprocess.run(
-                ["curl", "-sS", "-H", f"Authorization: Bearer {lp_token}", url_leads],
+                [
+                    "curl", "-sS",
+                    "-H", f"X-LP-Token: {lp_token}",
+                    "-H", f"X-LP-Id: {lp_config_id}",
+                    f"{url_leads}?lp_id={lp_config_id}",
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -95,7 +131,8 @@ def main() -> int:
             if result.returncode == 0 and result.stdout.strip():
                 try:
                     data = json.loads(result.stdout)
-                    count = len(data) if isinstance(data, list) else data.get("count", "?")
+                    leads = data.get("leads", data) if isinstance(data, dict) else data
+                    count = len(leads) if isinstance(leads, list) else "?"
                     print(f"✅ Smoke /leads OK — {count} leads")
                 except json.JSONDecodeError:
                     print(f"⚠️  /leads retornou texto não-JSON: {result.stdout[:200]}")

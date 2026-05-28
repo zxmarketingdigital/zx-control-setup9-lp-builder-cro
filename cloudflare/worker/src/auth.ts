@@ -1,4 +1,8 @@
-// auth.ts — valida X-LP-Token + CORS por allowed_origins do lp_config
+// auth.ts — autenticação dividida em dois níveis:
+//   - authenticatePublic: rotas que o browser do visitante chama
+//       (capture-lead, chat-ia). Valida APENAS Origin allowlist + lp_id existente.
+//       NÃO exige X-LP-Token — o token nunca é exposto no front-end público.
+//   - authenticateAdmin: rotas administrativas (leads, usage). Exige X-LP-Token.
 import type { Env } from "./types";
 
 export interface AuthContext {
@@ -8,40 +12,26 @@ export interface AuthContext {
   dailyLimit: number;
 }
 
-export async function authenticateRequest(
-  request: Request,
+function jsonError(status: number, error: string, detail?: string): Response {
+  const body: Record<string, string> = { error };
+  if (detail) body.detail = detail;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+async function loadLpConfig(
   env: Env,
+  lpConfigId: string,
 ): Promise<AuthContext | Response> {
-  const token = request.headers.get("X-LP-Token");
-  const lpConfigId = new URL(request.url).searchParams.get("lp_id")
-    || request.headers.get("X-LP-Id");
-
-  if (!token || !lpConfigId) {
-    return new Response(
-      JSON.stringify({ error: "missing_auth", detail: "X-LP-Token + lp_id required" }),
-      { status: 401, headers: { "content-type": "application/json" } },
-    );
-  }
-
-  if (token !== env.LP_TOKEN) {
-    return new Response(
-      JSON.stringify({ error: "invalid_token" }),
-      { status: 403, headers: { "content-type": "application/json" } },
-    );
-  }
-
   const row = await env.DB.prepare(
     "SELECT id, owner_id, allowed_origins, daily_limit FROM lp_configs WHERE id = ?",
   )
     .bind(lpConfigId)
     .first();
 
-  if (!row) {
-    return new Response(
-      JSON.stringify({ error: "lp_not_found" }),
-      { status: 404, headers: { "content-type": "application/json" } },
-    );
-  }
+  if (!row) return jsonError(404, "lp_not_found");
 
   let allowedOrigins: string[] = [];
   try {
@@ -56,6 +46,53 @@ export async function authenticateRequest(
     allowedOrigins,
     dailyLimit: Number(row.daily_limit ?? Number(env.DEFAULT_DAILY_LIMIT ?? 800)),
   };
+}
+
+/**
+ * Autenticação pra endpoints públicos (chamados pelo browser do visitante).
+ * NÃO exige X-LP-Token — segurança vem de Origin allowlist + rate limit.
+ */
+export async function authenticatePublic(
+  request: Request,
+  env: Env,
+): Promise<AuthContext | Response> {
+  const lpConfigId = new URL(request.url).searchParams.get("lp_id")
+    || request.headers.get("X-LP-Id");
+
+  if (!lpConfigId) {
+    return jsonError(400, "missing_lp_id", "X-LP-Id header or ?lp_id= required");
+  }
+
+  const ctx = await loadLpConfig(env, lpConfigId);
+  if (ctx instanceof Response) return ctx;
+
+  const origin = request.headers.get("origin");
+  if (origin && originDenied(origin, ctx.allowedOrigins)) {
+    return jsonError(403, "origin_not_allowed");
+  }
+
+  return ctx;
+}
+
+/**
+ * Autenticação pra endpoints admin (CRM, usage).
+ * Exige X-LP-Token igual ao secret LP_TOKEN do Worker.
+ */
+export async function authenticateAdmin(
+  request: Request,
+  env: Env,
+): Promise<AuthContext | Response> {
+  const token = request.headers.get("X-LP-Token");
+  const lpConfigId = new URL(request.url).searchParams.get("lp_id")
+    || request.headers.get("X-LP-Id");
+
+  if (!token || !lpConfigId) {
+    return jsonError(401, "missing_auth", "X-LP-Token + lp_id required");
+  }
+  if (token !== env.LP_TOKEN) {
+    return jsonError(403, "invalid_token");
+  }
+  return loadLpConfig(env, lpConfigId);
 }
 
 export function corsHeaders(origin: string | null, allowed: string[]): HeadersInit {

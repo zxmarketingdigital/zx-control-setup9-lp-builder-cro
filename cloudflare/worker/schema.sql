@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS leads (
   name         TEXT NOT NULL,
   email        TEXT,
   whatsapp     TEXT,
-  status       TEXT NOT NULL DEFAULT 'novo',  -- novo|em_conversa|qualificado|converteu|abandonou
+  status       TEXT NOT NULL DEFAULT 'novo'
+               CHECK(status IN ('novo','em_conversa','qualificado','encaminhado_humano','converteu','abandonou')),
   utm_source   TEXT,
   utm_medium   TEXT,
   utm_campaign TEXT,

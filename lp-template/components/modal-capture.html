@@ -47,20 +47,24 @@
               autocomplete="email"
               placeholder="voce@email.com"
             >
+            <p x-show="fieldErrors.email" x-text="fieldErrors.email" style="color: #b91c1c; font-size: 0.8rem; margin: 0.25rem 0 0 0;"></p>
           </div>
 
           <div class="field">
-            <label class="field__label" for="cap-whats">WhatsApp</label>
+            <label class="field__label" for="cap-whats">WhatsApp *</label>
             <input
               id="cap-whats"
               class="field__input"
               type="tel"
               x-model="form.whatsapp"
               @input="form.whatsapp = maskPhone(form.whatsapp)"
+              required
               autocomplete="tel"
               placeholder="(11) 99999-9999"
               maxlength="15"
+              inputmode="tel"
             >
+            <p x-show="fieldErrors.whatsapp" x-text="fieldErrors.whatsapp" style="color: #b91c1c; font-size: 0.8rem; margin: 0.25rem 0 0 0;"></p>
           </div>
 
           <p x-show="error" x-text="error" style="color: #b91c1c; font-size: 0.875rem; margin: 0;"></p>

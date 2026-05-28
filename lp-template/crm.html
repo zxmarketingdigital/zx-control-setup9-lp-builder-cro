@@ -13,7 +13,8 @@
   <script>
     window.LP_CONFIG = null;
     (function () {
-      fetch('/lp-config.json', { cache: 'no-store' })
+      // Lê o mesmo config público da LP — não contém lp_token (token vem do prompt do CRM).
+      fetch('/lp-public.json', { cache: 'no-store' })
         .then(function (r) { return r.json(); })
         .then(function (cfg) {
           window.LP_CONFIG = cfg;
@@ -176,7 +177,7 @@
   <script>
     function crmApp() {
       return {
-        STATUSES: ['novo', 'contato', 'qualificado', 'cliente', 'perdido'],
+        STATUSES: ['novo', 'em_conversa', 'qualificado', 'encaminhado_humano', 'converteu', 'abandonou'],
         leads: [],
         loading: false,
         search: '',
@@ -191,12 +192,9 @@
 
         boot: function () {
           var self = this;
-          // Token via querystring ou prompt
-          var qs = new URLSearchParams(location.search);
-          self.token = qs.get('lp_token') || qs.get('token') || '';
-          if (!self.token) {
-            self.token = window.prompt('Cole o lp_token para acessar o CRM:') || '';
-          }
+          // Token só via prompt — NUNCA via querystring (vaza em histórico/logs).
+          // Pra compartilhar URL com o cliente, abra em janela anônima e cole o token no prompt.
+          self.token = window.prompt('Cole o lp_token para acessar o CRM:') || '';
           if (!self.token) {
             alert('Token obrigatório.');
             return;

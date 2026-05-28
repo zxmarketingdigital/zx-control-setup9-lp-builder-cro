@@ -1,4 +1,5 @@
 // rate-limit.ts — cap diário por (lp_config_id, endpoint) usando D1 usage_counters
+// UPSERT atômico com RETURNING evita race entre SELECT e INSERT.
 import type { Env } from "./types";
 
 function todayUTC(): string {
@@ -19,31 +20,24 @@ export async function checkAndIncrement(
   limit: number,
 ): Promise<UsageState> {
   const day = todayUTC();
-  const row = await env.DB.prepare(
-    "SELECT count FROM usage_counters WHERE lp_config_id = ? AND day = ? AND endpoint = ?",
+
+  // UPSERT atômico — SQLite garante 1 transação por statement
+  const result = await env.DB.prepare(
+    `INSERT INTO usage_counters (lp_config_id, day, endpoint, count)
+     VALUES (?, ?, ?, 1)
+     ON CONFLICT(lp_config_id, day, endpoint)
+     DO UPDATE SET count = count + 1
+     RETURNING count`,
   )
     .bind(lpConfigId, day, endpoint)
     .first<{ count: number }>();
 
-  const current = row?.count ?? 0;
-  if (current >= limit) {
-    return { count: current, limit, remaining: 0, exceeded: true };
-  }
-
-  await env.DB.prepare(
-    `INSERT INTO usage_counters (lp_config_id, day, endpoint, count)
-     VALUES (?, ?, ?, 1)
-     ON CONFLICT(lp_config_id, day, endpoint)
-     DO UPDATE SET count = count + 1`,
-  )
-    .bind(lpConfigId, day, endpoint)
-    .run();
-
+  const newCount = result?.count ?? 1;
   return {
-    count: current + 1,
+    count: newCount,
     limit,
-    remaining: limit - current - 1,
-    exceeded: false,
+    remaining: Math.max(0, limit - newCount),
+    exceeded: newCount > limit,
   };
 }
 
