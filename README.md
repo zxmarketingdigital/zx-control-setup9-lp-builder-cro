@@ -17,7 +17,7 @@ Setup oficial da Semana 9 do ZX Control Scale. Pare de entregar template genéri
 ## Instalação
 
 ```bash
-gh repo clone zxmarketingdigital/zx-control-setup9-lp-builder-cro
+git clone https://github.com/zxmarketingdigital/zx-control-setup9-lp-builder-cro.git
 cd zx-control-setup9-lp-builder-cro
 claude
 ```
