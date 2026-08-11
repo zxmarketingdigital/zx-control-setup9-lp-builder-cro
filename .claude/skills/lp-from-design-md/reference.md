@@ -134,7 +134,7 @@ open ~/projetos/lp-<copy-slug>-<design-slug>/index.html
 - Caminho do projeto
 - Tokens-chave aplicados (canvas, primary, fonte display)
 - Decisões de adaptação da copy → componentes (ex: "demo Claude Code virou screenshot panel; 10 masterclasses como changelog rows")
-- Próximos passos sugeridos: deploy via `/pages-deploy` se aprovado, ou variante em outro design system
+- Próximos passos sugeridos: publicar a LP quando aprovada, ou gerar variante em outro design system
 
 ## Boas práticas
 
@@ -156,10 +156,4 @@ open ~/projetos/lp-<copy-slug>-<design-slug>/index.html
 
 ## Recursos disponíveis
 
-- Showcase com 71 demos simples: `~/projetos/lp-design-md-showcase/` · `http://localhost:8891/showcase/`
-- Build script com tokens já extraídos: `~/projetos/lp-design-md-showcase/build.py` (parser YAML + heurística hex)
-- LP rica de referência: `~/projetos/lp-agencia-ia-50k-linear/` (Linear, full Agência IA 50K)
-- Memória relacionada:
-  - `reference_awesome_design_md.md` — repo + categorias + top 3 ZX LAB
-  - `feedback_lp_html_css_puro.md` — por que HTML+CSS puro vence Tailwind aqui
-  - `feedback_zxlab_sites_symlink.md` — como expor a LP no Launcher ZX LAB
+- Repo de design systems: `~/projetos/awesome-design-md/` (71 sistemas prontos pra usar como referência)
